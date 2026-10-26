@@ -388,6 +388,15 @@ struct PlanningQueue: View {
                 return true
             }
     }
+    private func queueHelp(_ item: Item) -> String {
+        let project = state.projectName(item.projectID)
+        let priority = AppState.priorityTitle(item.priority)
+        let tags: [String] = item.tagIDs.compactMap { id in
+            guard let tag = state.data.tags.first(where: { $0.id == id }) else { return nil }
+            return "#" + tag.name
+        }
+        return "\(item.title)\n\(project) · \(priority) · \(item.duration) мин\n" + tags.joined(separator: " ")
+    }
     private func queueCard(_ item: Item) -> some View {
         HStack(spacing: 5) {
             CompleteButton(item: item) { state.complete(item.id) }
@@ -413,7 +422,7 @@ struct PlanningQueue: View {
             .background(Color(hex: state.color(item)).opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
             .overlay { RoundedRectangle(cornerRadius: 6).stroke(Color(hex: state.color(item)).opacity(0.30), lineWidth: 0.5) }
             .contentShape(Rectangle()).onDrag { state.beginDrag(item) }
-            .help(item.title + "\n" + state.projectName(item.projectID) + " · " + AppState.priorityTitle(item.priority) + " · \(item.duration) мин\n" + item.tagIDs.compactMap { id in state.data.tags.first { $0.id == id }.map { "#" + $0.name } }.joined(separator: " "))
+.help(queueHelp(item))
             .popover(isPresented: Binding(get: { editingID == item.id }, set: { if !$0 { editingID = nil } })) {
                 ItemInspector(state: state, id: item.id).frame(width: 340, height: 620)
             }
