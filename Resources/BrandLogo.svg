@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="350" height="100" viewBox="0 0 350 100" role="img" aria-label="Толк">
+  <rect x="4" y="4" width="92" height="92" rx="23" fill="#243df0"/>
+  <path d="M25 27H75V40H55V78H42V40H25Z" fill="white"/>
+  <circle cx="70" cy="69" r="10" fill="#ff981b"/>
+  <text x="117" y="72" font-family="-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif" font-size="65" font-weight="650" letter-spacing="-2" fill="#172033">Толк</text>
+</svg>

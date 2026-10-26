@@ -1,0 +1,29 @@
+name: Проверка приложения
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Выбрать самый новый установленный Xcode
+        run: |
+          python3 - <<'PY'
+          import glob, os, plistlib
+          choices = []
+          for path in glob.glob('/Applications/Xcode*.app'):
+              with open(path + '/Contents/Info.plist', 'rb') as file:
+                  version = plistlib.load(file)['CFBundleShortVersionString']
+              numbers = tuple(int(p) for p in version.split('.') if p.isdigit())
+              choices.append((numbers, path + '/Contents/Developer'))
+          version, developer = max(choices)
+          if version < (26,): raise SystemExit('Требуется Xcode 26 / Swift 6.2 или новее')
+          with open(os.environ['GITHUB_ENV'], 'a') as file: file.write('DEVELOPER_DIR=' + developer + '\n')
+          PY
+      - name: Тесты Swift
+        run: zsh scripts/test.sh
+      - name: Тесты подготовки выпуска
+        run: python3 -m unittest discover -s scripts/tests -v
+      - name: Проверка сборки приложения
+        run: zsh scripts/build.sh

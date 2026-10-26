@@ -1,0 +1,5 @@
+{
+  "repository": "YOUR_GITHUB_NAME/tolk",
+  "public_key": "RUN_SETUP_TO_CREATE_PUBLIC_KEY",
+  "keychain_account": "tolk-updates"
+}
