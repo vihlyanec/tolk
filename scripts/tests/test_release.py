@@ -68,4 +68,12 @@ class ReleaseArtifactTests(unittest.TestCase):
         archive.write_bytes(b'changed')
         with self.assertRaises(ValueError): self.release.verify_manifest(self.folder,self.config)
 
+    def test_draft_lookup_does_not_require_a_published_tag(self):
+        draft = dict(id=123,tag_name='v1.0.0',draft=True,assets=[])
+        with patch.object(self.release,'github',return_value=json.dumps([[dict(tag_name='v0.9.0')],[draft]])) as github:
+            result = self.release.find_release(self.config,'1.0.0')
+            self.assertEqual(result,draft)
+            self.assertIn('--paginate',github.call_args.args[0])
+            self.assertNotIn('/tags/',github.call_args.args[0][1])
+
 if __name__ == '__main__': unittest.main()

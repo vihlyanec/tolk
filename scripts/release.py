@@ -163,10 +163,17 @@ def upload(version):
             '--title','Толк ' + version,'--notes-file',str(folder / f'Tolk-{version}.md')] + [str(p) for p in assets])
     print('Создан ЧЕРНОВИК. Проверьте его в GitHub, затем опубликуйте вручную или выполните publish.')
 
+def find_release(config, version):
+    # Draft tags may not have a Git ref yet: /releases/tags/... then returns 404.
+    pages = json.loads(github(['api','repos/' + config['repository'] + '/releases?per_page=100','--paginate','--slurp']))
+    matches = [release for page in pages for release in page if release['tag_name'] == 'v' + version]
+    if len(matches) != 1: raise ValueError('Не найден единственный выпуск с этой версией')
+    return matches[0]
+
 def publish(version):
     config = read_configuration(); manifest = verify_manifest(release_dir(version), config)
     if manifest.get('test_build') or not manifest.get('source_clean'): raise ValueError('Тестовый выпуск не публикуется')
-    info = json.loads(github(['api','repos/' + config['repository'] + '/releases/tags/v' + version]))
+    info = find_release(config, version)
     if not info['draft']: raise ValueError('Этот выпуск уже опубликован')
     for name, expected in manifest['sha256'].items():
         asset = next((a for a in info['assets'] if a['name'] == name), None)
