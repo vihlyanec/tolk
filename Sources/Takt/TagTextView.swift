@@ -75,7 +75,8 @@ struct TagTitleInput: View {
     var fontSize: CGFloat = 20
     var placeholder = "Название"
     var autoFocus = false
+    var onCommit: () -> Void = {}
     var body: some View {
-        MarkdownEditor(text: $text, tags: tags, fontSize: fontSize, placeholder: placeholder, autoFocus: autoFocus, fitContent: true)
+        MarkdownEditor(text: $text, tags: tags, fontSize: fontSize, placeholder: placeholder, autoFocus: autoFocus, fitContent: true, onCommit: onCommit)
     }
 }

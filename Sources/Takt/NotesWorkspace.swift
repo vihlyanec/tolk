@@ -6,7 +6,7 @@ struct NotesWorkspace: View {
     @Bindable var state: AppState
     @ViewState private var trash = false
     private var notes: [Item] {
-        state.data.items.filter { $0.kind == .note && $0.deleted == trash && state.matchesQuery($0, state.search) }.sorted { $0.modified > $1.modified }
+        state.notes(deleted: trash)
     }
     private var selected: Item? { notes.first { $0.id == state.selectedID } }
     var body: some View {
@@ -19,6 +19,17 @@ struct NotesWorkspace: View {
                     }.padding(16)
                     HStack { Image(systemName: "magnifyingglass").foregroundStyle(.secondary); TextField("Поиск заметок", text: $state.search).textFieldStyle(.plain) }
                         .padding(8).background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 6)).padding(.horizontal, 12).padding(.bottom, 12)
+                    HStack {
+                        Menu {
+                            Button("Все заметки") { state.scope = .all }
+                            ForEach(state.data.tags) { tag in
+                                Button("#" + tag.name) { state.filterByTag(tag.id) }
+                            }
+                        } label: { Label(state.scope == .all ? "Все заметки" : state.title, systemImage: "line.3.horizontal.decrease") }
+                            .menuStyle(.borderlessButton).fixedSize().help("Фильтр заметок по тегу")
+                        Spacer()
+                        if state.scope != .all { Button("Сбросить") { state.scope = .all }.buttonStyle(.plain).font(.system(size: 11)) }
+                    }.padding(.horizontal, 14).padding(.bottom, 10)
                     Divider()
                     ScrollView {
                         LazyVStack(spacing: 2) {
@@ -42,9 +53,10 @@ struct NotesWorkspace: View {
             if let note = selected { NoteDocumentEditor(state: state, id: note.id).id(note.id) }
             else { EmptyState(symbol: "note.text", title: notes.isEmpty ? "Нет заметок" : "Выберите заметку", detail: "Создайте заметку кнопкой слева или через Control-D.") }
         }.onAppear { chooseFirst() }
-            .onChange(of: state.data.items.map { $0.id.uuidString + String($0.deleted) }) { _, _ in chooseFirst() }
+            .onChange(of: notes.map(\.id)) { _, _ in chooseFirst() }
             .onChange(of: state.search) { _, _ in chooseFirst() }
             .onChange(of: trash) { _, _ in chooseFirst() }
+            .onChange(of: state.scope) { _, _ in chooseFirst() }
     }
     private var noteCountLabel: String {
         let count = notes.count
@@ -101,9 +113,9 @@ struct NoteDocumentEditor: View {
                 Divider()
                 VStack(alignment: .leading, spacing: 14) {
                     Text(item.modified.formatted(date: .abbreviated, time: .shortened)).font(.system(size: 11)).foregroundStyle(.secondary).frame(maxWidth: .infinity)
-                    TagTitleInput(text: Binding(get: { self.item?.title ?? "" }, set: { text in state.update(id) { $0.title = text } }), tags: state.data.tags, fontSize: 25, placeholder: "Название заметки", autoFocus: item.title.isEmpty && !item.deleted).disabled(item.deleted)
-                    if !item.tagIDs.isEmpty { FlowTags(state: state, item: item) }
-                    RichNoteEditor(text: Binding(get: { self.item?.body ?? "" }, set: { text in state.update(id) { $0.body = text } }), action: format, tags: state.data.tags, editable: !item.deleted).frame(maxWidth: .infinity, maxHeight: .infinity)
+                    TagTitleInput(text: Binding(get: { self.item?.title ?? "" }, set: { text in state.update(id) { $0.title = text } }), tags: state.data.tags, fontSize: 25, placeholder: "Название заметки", autoFocus: item.title.isEmpty && !item.deleted, onCommit: { state.commitHashtags(id) }).disabled(item.deleted)
+                    if !state.tagIDs(for: item).isEmpty { FlowTags(state: state, item: item) }
+                    RichNoteEditor(text: Binding(get: { self.item?.body ?? "" }, set: { text in state.update(id) { $0.body = text } }), action: format, tags: state.data.tags, editable: !item.deleted, commitTags: { state.commitHashtags(id) }).frame(maxWidth: .infinity, maxHeight: .infinity)
                 }.padding(28)
             }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Palette.canvas)
                 .popover(isPresented: $linkOpen) {

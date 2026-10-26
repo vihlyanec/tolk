@@ -70,7 +70,24 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         return NSItemProvider(object: item.id.uuidString as NSString)
     }
     func endDrag() { draggingID = nil; dragOffsetMinutes = 0; dragSessionID = UUID() }
-    func select(_ id: UUID) { selectedID = id; inspectorVisible = true }
+    func select(_ id: UUID) {
+        selectedID = id; inspectorVisible = true
+        if item(id)?.kind == .note { area = .notes }
+    }
+    func filterByTag(_ id: UUID) { if area == .calendar { area = .tasks }; scope = .tag(id); search = ""; selectedID = nil }
+    func commitHashtags(_ id: UUID) {
+        guard let item = item(id), !item.deleted else { return }
+        let names = Hashtags.names(in: item.title + "\n" + item.body)
+        change { snapshot in
+            guard let index = snapshot.items.firstIndex(where: { $0.id == id }) else { return }
+            for name in names {
+                let tag: Tag
+                if let existing = snapshot.tags.first(where: { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }) { tag = existing }
+                else { tag = Tag(name: name, color: ProjectTagPalette.nextColor(in: snapshot)); snapshot.tags.append(tag) }
+                if !snapshot.items[index].tagIDs.contains(tag.id) { snapshot.items[index].tagIDs.append(tag.id) }
+            }
+        }
+    }
     func selectCalendar(_ id: UUID) { selectedID = id; calendarEditingID = id }
     var activeProjects: [Project] { data.projects.filter { !$0.archived } }
     var scopeKey: String { "\(area.rawValue)-\(String(describing: scope))" }
@@ -145,11 +162,10 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
             if let initialDate { item.schedule = .timed(initialDate) }
             else if area == .tasks && (scope == .today || scope == .week) { item.schedule = .day(calendar.startOfDay(for: Date())) }
         }
-        let finishedTags = Hashtags.names(in: body, terminatedOnly: true)
         change { snapshot in
             for name in Hashtags.names(in: body) {
                 var tag = snapshot.tags.first { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }
-                if tag == nil && finishedTags.contains(name) { let created = Tag(name: name, color: ProjectTagPalette.nextColor(in: snapshot)); snapshot.tags.append(created); tag = created }
+                if tag == nil { let created = Tag(name: name, color: ProjectTagPalette.nextColor(in: snapshot)); snapshot.tags.append(created); tag = created }
                 if let tag, !item.tagIDs.contains(tag.id) { item.tagIDs.append(tag.id) }
             }
             snapshot.items.append(item)
@@ -211,12 +227,12 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         }
         if scope == .tag(id) { scope = .all }
     }
-    @discardableResult func acceptProjectDrop(_ payload: String, on projectID: UUID) -> Bool {
+    @discardableResult func acceptProjectDrop(_ payload: String, on projectID: UUID, after: Bool = false) -> Bool {
         guard let destination = activeProjects.first(where: { $0.id == projectID }) else { return false }
         if payload.hasPrefix("takt-project:") {
             guard let id = UUID(uuidString: String(payload.dropFirst(13))), id != projectID,
                   activeProjects.contains(where: { $0.id == id }) else { return false }
-            moveProject(id, before: projectID); return true
+            moveProject(id, before: projectID, after: after); return true
         }
         guard let id = UUID(uuidString: payload), let source = item(id), !source.deleted,
               source.kind == destination.kind else { return false }
@@ -229,7 +245,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         endDrag()
         return data.items.first(where: { $0.id == id })?.projectID == destination.id
     }
-    func moveProject(_ id: UUID, before target: UUID) {
+    func moveProject(_ id: UUID, before target: UUID, after: Bool = false) {
         guard id != target else { return }
         change { snapshot in
             guard let from = snapshot.projects.firstIndex(where: { $0.id == id }),
@@ -237,11 +253,13 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
             var project = snapshot.projects.remove(at: from)
             project.folder = destination.folder
             let to = snapshot.projects.firstIndex(where: { $0.id == target }) ?? snapshot.projects.count
-            snapshot.projects.insert(project, at: to)
+            snapshot.projects.insert(project, at: min(snapshot.projects.count, to + (after ? 1 : 0)))
         }
     }
     @discardableResult func createNote() -> UUID {
-        let item = Item(title: "", kind: .note)
+        var item = Item(title: "", kind: .note)
+        if case .tag(let id) = scope { item.tagIDs = [id] }
+        if let project, project.kind == .note { item.projectID = project.id }
         add(item); return item.id
     }
     func move(_ id: UUID, before target: UUID) {
@@ -294,6 +312,14 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         }.filter { item in !data.projects.contains { $0.id == item.projectID && $0.archived } }
     }
     var visibleItems: [Item] { items(in: scope, searchText: search) }
+    func notes(deleted: Bool = false) -> [Item] {
+        data.items.filter { item in
+            guard item.kind == .note, item.deleted == deleted, matchesQuery(item, search) else { return false }
+            if case .tag(let id) = scope { return !tagIDs(for: item).isDisjoint(with: tagFamily(id)) }
+            if case .project(let id) = scope { return item.projectID == id }
+            return true
+        }.sorted { $0.modified > $1.modified }
+    }
     func taskCount(in scope: Scope) -> Int { items(in: scope, searchText: "", activeOnly: true).count }
     func folderTaskCount(_ folder: String) -> Int { activeProjects.filter { $0.folder == folder && $0.kind == .task }.reduce(0) { $0 + taskCount(in: .project($1.id)) } }
     func isOverdue(_ item: Item) -> Bool { !item.completed && (item.schedule.date.map { $0 < calendar.startOfDay(for: Date()) } ?? false) }
@@ -316,7 +342,12 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         return data.items.filter { item in
             if scope == .trash { return item.deleted && matchesSearch(item) }
             guard !item.deleted else { return false }
-            guard item.kind == (area == .notes ? .note : .task) else { return false }
+            switch scope {
+            case .tag: break // A tag belongs to notes as well as tasks.
+            case .project(let id):
+                guard item.kind == (data.projects.first { $0.id == id }?.kind ?? .task) else { return false }
+            default: guard item.kind == (area == .notes ? .note : .task) else { return false }
+            }
             if scope == .completed { return item.completed && matchesSearch(item) }
             if item.completed && (activeOnly || !data.preferences.showCompleted) { return false }
             if let id = item.projectID, data.projects.first(where: { $0.id == id })?.archived == true { return false }
@@ -325,7 +356,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
             case .all, .completed, .trash: matches = true
             case .inbox: matches = item.projectID == nil
             case .project(let id): matches = item.projectID == id
-            case .tag(let id): matches = !Set(item.tagIDs).isDisjoint(with: tagFamily(id))
+            case .tag(let id): matches = !tagIDs(for: item).isDisjoint(with: tagFamily(id))
             case .today: matches = isOverdue(item) || (item.schedule.date.map { calendar.isDateInToday($0) } ?? false)
             case .week:
                 let start = calendar.startOfDay(for: Date())
@@ -335,14 +366,20 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
             return matches && matchesSearch(item)
         }
     }
+    /// Older notes can contain a valid hashtag without a stored tagID. Resolve it
+    /// without rewriting the user's database or requiring an edit to the note.
+    func tagIDs(for item: Item) -> Set<UUID> {
+        let names = Set(Hashtags.names(in: item.title + "\n" + item.body).map { $0.lowercased() })
+        return Set(item.tagIDs).union(data.tags.filter { names.contains($0.name.lowercased()) }.map(\.id))
+    }
     func matchesQuery(_ item: Item, _ query: String) -> Bool {
-        if query.trimmingCharacters(in: .whitespacesAndNewlines) == "#" { return !item.tagIDs.isEmpty }
+        if query.trimmingCharacters(in: .whitespacesAndNewlines) == "#" { return !tagIDs(for: item).isEmpty }
         let terms = Hashtags.searchTerms(in: query)
         for name in terms.tags {
             let exact = data.tags.filter { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }
             let matches = exact.isEmpty ? data.tags.filter { $0.name.localizedCaseInsensitiveContains(name) } : exact
             let ids = matches.reduce(into: Set<UUID>()) { $0.formUnion(tagFamily($1.id)) }
-            if Set(item.tagIDs).isDisjoint(with: ids) { return false }
+            if tagIDs(for: item).isDisjoint(with: ids) { return false }
         }
         return terms.text.isEmpty || (item.title + " " + item.body + " " + item.tagIDs.compactMap { id in data.tags.first { $0.id == id }?.name }.joined(separator: " ")).localizedCaseInsensitiveContains(terms.text)
     }
@@ -350,7 +387,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         let values = items(in: .all, searchText: queueSearch, activeOnly: true).filter { item in
             guard !item.schedule.isTimed, !queueInboxOnly || item.projectID == nil,
                   queueProjectID == nil || item.projectID == queueProjectID,
-                  queueTagID == nil || !Set(item.tagIDs).isDisjoint(with: tagFamily(queueTagID!)),
+                  queueTagID == nil || !tagIDs(for: item).isDisjoint(with: tagFamily(queueTagID!)),
                   queuePriority == nil || item.priority == queuePriority else { return false }
             switch queueDateFilter {
             case "Без даты": return item.schedule.date == nil
@@ -399,7 +436,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         }
         let keys: [String]
         switch grouping {
-        case .project: keys = ["Входящие"] + activeProjects.filter { $0.kind == (area == .notes ? .note : .task) }.map(\.name)
+        case .project: keys = ["Входящие"] + activeProjects.filter { project in items.contains { $0.projectID == project.id } }.map(\.name)
         case .section: keys = project?.sections ?? Array(Set(items.map(\.section))).sorted()
         case .priority: keys = ["Высокий", "Средний", "Низкий", "Без приоритета"]
         case .tag: keys = data.tags.map { "#" + $0.name } + ["Без тегов"]
@@ -411,7 +448,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
                 case .project: return projectName(item.projectID) == key
                 case .section: return item.section == key
                 case .priority: return Self.priorityTitle(item.priority) == key
-                case .tag: return item.tagIDs.isEmpty ? key == "Без тегов" : item.tagIDs.contains { id in data.tags.first { $0.id == id }.map { "#" + $0.name == key } ?? false }
+                case .tag: return tagIDs(for: item).isEmpty ? key == "Без тегов" : tagIDs(for: item).contains { id in data.tags.first { $0.id == id }.map { "#" + $0.name == key } ?? false }
                 default: return true
                 }
             }

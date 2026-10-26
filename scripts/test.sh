@@ -4,8 +4,9 @@ cd "${0:A:h:h}"
 export CLANG_MODULE_CACHE_PATH="${TMPDIR:-/private/tmp}/takt-module-cache"
 export SWIFTPM_MODULECACHE_OVERRIDE="$CLANG_MODULE_CACHE_PATH"
 takt_developer=$(xcode-select -p)
+takt_scratch=${TOLK_SCRATCH_PATH:-/private/tmp/takt-native}
 if [[ -d "$takt_developer/Library/Developer/Frameworks/Testing.framework" ]]; then
-    swift test --build-system native --disable-sandbox --cache-path "${TMPDIR:-/private/tmp}/takt-spm-cache" --scratch-path /private/tmp/takt-native \
+    swift test --build-system native --disable-sandbox --cache-path "${TMPDIR:-/private/tmp}/takt-spm-cache" --scratch-path "$takt_scratch" \
         -Xswiftc -F -Xswiftc "$takt_developer/Library/Developer/Frameworks" \
         -Xswiftc -load-plugin-library -Xswiftc "$takt_developer/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib" \
         -Xlinker -rpath -Xlinker "$takt_developer/Library/Developer/Frameworks"

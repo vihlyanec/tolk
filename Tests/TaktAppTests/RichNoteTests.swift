@@ -5,8 +5,10 @@ import Testing
 
 @MainActor private final class NoteMessages: NSObject, WKScriptMessageHandler {
     var ready = false
+    var tagCommits = 0
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         if (message.body as? [String: String])?["type"] == "ready" { ready = true }
+        if (message.body as? [String: String])?["type"] == "commitTags" { tagCommits += 1 }
     }
 }
 @Test @MainActor func richNotesRenderEditAndRoundTripMarkdownInOneDocument() async throws {
@@ -35,5 +37,9 @@ import Testing
     let typed = try await web.callAsyncJavaScript("window.setNote('<p><br></p>');const r=document.createRange(),s=getSelection();r.selectNodeContents(document.querySelector('#editor p'));r.collapse(true);s.removeAllRanges();s.addRange(r);document.getElementById('editor').focus();document.execCommand('insertText',false,'**Сразу**');return {html:document.getElementById('editor').innerHTML,text:window.noteMarkdown()}", arguments: [:], in: nil, contentWorld: .page) as? [String: String]
     #expect(typed?["text"] == "**Сразу**")
     #expect(typed?["html"]?.contains("<strong>") == true)
+
+    _ = try await web.callAsyncJavaScript("window.setNote('<p>#конечный </p>');document.getElementById('editor').dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:' '}));return window.noteMarkdown()", arguments: [:], in: nil, contentWorld: .page)
+    for _ in 0..<20 where messages.tagCommits == 0 { try await Task.sleep(for: .milliseconds(20)) }
+    #expect(messages.tagCommits > 0)
 
 }

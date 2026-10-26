@@ -250,7 +250,7 @@ struct StickyView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 6) {
                             if item.kind == .task { CompleteButton(item: item) { state.complete(id) } }
-                            TagTitleInput(text: Binding(get: { item.title }, set: { text in state.update(id) { $0.title = text } }), tags: state.data.tags, fontSize: 16, placeholder: "Название заметки")
+                            TagTitleInput(text: Binding(get: { item.title }, set: { text in state.update(id) { $0.title = text } }), tags: state.data.tags, fontSize: 16, placeholder: "Название заметки", onCommit: { state.commitHashtags(id) })
                             Menu {
                                 Button("Свернуть в полоску", action: toggleCollapsed)
                                 Button(item.stickyPinned ? "Не держать поверх окон" : "Поверх других окон") { state.update(id) { $0.stickyPinned.toggle() } }
@@ -264,8 +264,8 @@ struct StickyView: View {
                             } label: { Image(systemName: "ellipsis").frame(width: 24, height: 24).contentShape(Rectangle()) }
                                 .menuStyle(.borderlessButton).fixedSize().help("Действия с заметкой")
                         }
-                        if !item.tagIDs.isEmpty { FlowTags(state: state, item: item) }
-                        RichNoteEditor(text: Binding(get: { item.body }, set: { text in state.update(id) { $0.body = text } }), action: action, tags: state.data.tags)
+                        if !state.tagIDs(for: item).isEmpty { FlowTags(state: state, item: item) }
+                        RichNoteEditor(text: Binding(get: { item.body }, set: { text in state.update(id) { $0.body = text } }), action: action, tags: state.data.tags, commitTags: { state.commitHashtags(id) })
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                         if state.errorMessage != nil { Text("Не удалось сохранить заметку").font(.system(size: 11)).foregroundStyle(.red) }
                     }.padding(.horizontal, 12).padding(.bottom, 12)

@@ -27,7 +27,7 @@ struct ItemInspector: View {
                 }.padding(.horizontal, 16).padding(.top, 12)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
-                        TagTitleInput(text: binding(\.title, fallback: ""), tags: state.data.tags)
+                        TagTitleInput(text: binding(\.title, fallback: ""), tags: state.data.tags, onCommit: { state.commitHashtags(id) })
                         VStack(alignment: .leading, spacing: 10) {
                             MetadataFlow {
                                 projectMenu(item)
@@ -51,9 +51,20 @@ struct ItemInspector: View {
                         Divider()
                         HStack {
                             Text(item.kind == .note ? "Текст заметки" : "Описание").fontWeight(.medium)
-                            Spacer(); Button(preview ? "Редактировать" : "Просмотр") { preview.toggle() }.buttonStyle(.plain).foregroundStyle(Palette.accent).font(.system(size: 11))
+                            Spacer()
+                            if item.kind == .task { Button(preview ? "Редактировать" : "Просмотр") { preview.toggle() }.buttonStyle(.plain).foregroundStyle(Palette.accent).font(.system(size: 11)) }
                         }
-                        if preview {
+                        if item.kind == .note {
+                            HStack(spacing: 3) {
+                                formatButton("bold", "Жирный", "**", "**")
+                                formatButton("italic", "Курсив", "*", "*")
+                                formatButton("textformat.size", "Заголовок", "## ", "")
+                                formatButton("list.bullet", "Список", "- ", "")
+                                formatButton("checklist", "Чек-лист", "- [ ] ", "")
+                                formatButton("link", "Ссылка", "[", "](https://)")
+                            }
+                            RichNoteEditor(text: binding(\.body, fallback: ""), action: format, tags: state.data.tags, editable: !item.deleted, commitTags: { state.commitHashtags(id) }).frame(minHeight: 260)
+                        } else if preview {
                             MarkdownPreview(text: item.body).frame(minHeight: 260)
                         } else {
                             HStack(spacing: 3) {
@@ -65,7 +76,7 @@ struct ItemInspector: View {
                                 formatButton("chevron.left.forwardslash.chevron.right", "Код", "`", "`")
                                 formatButton("link", "Ссылка", "[", "](https://)")
                             }
-                            MarkdownEditor(text: binding(\.body, fallback: ""), action: format, tags: state.data.tags).frame(minHeight: 180)
+                            MarkdownEditor(text: binding(\.body, fallback: ""), action: format, tags: state.data.tags, onCommit: { state.commitHashtags(id) }).frame(minHeight: 180)
                         }
                         if item.kind == .task {
                             Divider()
@@ -171,9 +182,9 @@ struct FlowTags: View {
     let item: Item
     var body: some View {
         MetadataFlow {
-            ForEach(state.data.items.first(where: { $0.id == item.id })?.tagIDs ?? item.tagIDs, id: \.self) { id in
+            ForEach(state.data.tags.filter { state.tagIDs(for: state.item(item.id) ?? item).contains($0.id) }.map(\.id), id: \.self) { id in
                 if let tag = state.data.tags.first(where: { $0.id == id }) {
-                    TagCapsule(tag: tag)
+                    Button { if item.kind == .note { state.area = .notes }; state.filterByTag(tag.id) } label: { TagCapsule(tag: tag) }.buttonStyle(.plain).help("Показать записи с тегом #" + tag.name)
                 }
             }
         }
@@ -191,6 +202,7 @@ struct MarkdownEditor: NSViewRepresentable {
     var fitContent = false
     var focusRequest: UUID? = nil
     var submit: (() -> Void)? = nil
+    var onCommit: () -> Void = {}
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 280, height: 180)); scroll.hasVerticalScroller = !fitContent; scroll.drawsBackground = false
@@ -239,6 +251,7 @@ struct MarkdownEditor: NSViewRepresentable {
         var requestedFocus = false
         var lastFocusRequest: UUID?
         init(_ parent: MarkdownEditor) { self.parent = parent }
+        func textDidEndEditing(_ notification: Notification) { parent.onCommit() }
         func textDidChange(_ notification: Notification) {
             guard let editor = notification.object as? TagTextView else { return }
             parent.text = editor.string; editor.refreshAttributes()

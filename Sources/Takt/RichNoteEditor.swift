@@ -8,6 +8,7 @@ struct RichNoteEditor: NSViewRepresentable {
     var action: EditorAction?
     var tags: [Tag] = []
     var editable = true
+    var commitTags: () -> Void = {}
     @Environment(\.colorScheme) private var scheme
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeNSView(context: Context) -> WKWebView {
@@ -59,6 +60,7 @@ struct RichNoteEditor: NSViewRepresentable {
             if value["type"] == "change", let text = value["text"], text != lastText {
                 lastText = text; parent.text = text
             }
+            if value["type"] == "commitTags" { parent.commitTags() }
             if value["type"] == "link", let raw = value["url"], let url = MarkdownHTML.safeURL(raw) { NSWorkspace.shared.open(url) }
         }
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
@@ -161,7 +163,8 @@ struct RichNoteEditor: NSViewRepresentable {
         document.execCommand('insertHTML',false,html+(match[6]?'&nbsp;':'&#8203;'));
       }
       editor.addEventListener('compositionstart',()=>composing=true);editor.addEventListener('compositionend',()=>{composing=false;changed();suggest();});
-      editor.addEventListener('input',()=>{if(composing)return;inlineTyping();changed();suggest();});
+      editor.addEventListener('input',e=>{if(composing)return;inlineTyping();changed();if(e.data===' '||e.inputType==='insertParagraph'||e.inputType==='insertLineBreak')send('commitTags');suggest();});
+      editor.addEventListener('blur',()=>{changed();send('commitTags');});
       editor.addEventListener('change',e=>{if(e.target.type==='checkbox'){e.target.toggleAttribute('checked',e.target.checked);const span=e.target.parentElement.querySelector('span');span?.classList.toggle('done',e.target.checked);changed();}});
       editor.addEventListener('paste',e=>{e.preventDefault();document.execCommand('insertText',false,e.clipboardData.getData('text/plain'));});
       editor.addEventListener('click',e=>{const link=e.target.closest('a');if(link&&!e.altKey){e.preventDefault();send('link',{url:link.href});}});

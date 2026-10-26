@@ -1,5 +1,6 @@
 import SwiftUI
 import TaktCore
+import UniformTypeIdentifiers
 
 // THESIS: A familiar, dense Mac workspace for capturing tasks and planning time.
 // OWN-WORLD: TickTick-like rails, SF type, thin dividers, blue accent, translucent events.
@@ -53,6 +54,7 @@ struct MainView: View {
 struct Sidebar: View {
     @Bindable var state: AppState
     @ViewState private var projectDropTarget: UUID?
+    @ViewState private var projectDropAfter = false
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) { Image(systemName: "magnifyingglass").foregroundStyle(.secondary); TextField("Поиск задач и заметок", text: $state.search).textFieldStyle(.plain) }
@@ -69,23 +71,21 @@ struct Sidebar: View {
                     ForEach(Array(Set(state.activeProjects.map(\.folder))).sorted(), id: \.self) { folder in
                         if !folder.isEmpty { HStack { Text(folder); Spacer(); countBadge(state.folderTaskCount(folder)) }.font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary).padding(.top, 10).padding(.horizontal, 8) }
                         ForEach(state.activeProjects.filter { $0.folder == folder }) { project in
-                            Button {
-                                state.scope = .project(project.id); state.selectedID = nil
-                                if project.kind == .note { state.area = .notes }
-                                else if state.area == .notes { state.area = .tasks }
-                            } label: {
-                                HStack(spacing: 9) {
-                                    Image(systemName: project.kind == .note ? "note.text" : "circle.fill").foregroundStyle(Color(hex: project.color)).font(.system(size: project.kind == .note ? 13 : 9)).frame(width: 16)
-                                    Text(project.name).lineLimit(1).layoutPriority(1); Spacer(minLength: 8); countBadge(state.taskCount(in: .project(project.id)))
-                                }.padding(.horizontal, 8).frame(height: 32).contentShape(Rectangle())
-                            }.buttonStyle(.plain).background(projectDropTarget == project.id ? Palette.accent.opacity(0.26) : state.scope == .project(project.id) ? Palette.accent.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 5))
+                            HStack(spacing: 9) {
+                                Image(systemName: project.kind == .note ? "note.text" : "circle.fill").foregroundStyle(Color(hex: project.color)).font(.system(size: project.kind == .note ? 13 : 9)).frame(width: 16)
+                                Text(project.name).lineLimit(1).layoutPriority(1); Spacer(minLength: 8); countBadge(state.taskCount(in: .project(project.id)))
+                            }.padding(.horizontal, 8).frame(height: 32).contentShape(Rectangle())
+                                .background(projectDropTarget == project.id ? Palette.accent.opacity(0.26) : state.scope == .project(project.id) ? Palette.accent.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 5))
+                                .onTapGesture { openProject(project) }
                                 .onDrag { NSItemProvider(object: ("takt-project:" + project.id.uuidString) as NSString) }
-                                .dropDestination(for: String.self, action: { strings, _ in
-                                    guard let raw = strings.first else { return false }
-                                    projectDropTarget = nil
-                                    return state.acceptProjectDrop(raw, on: project.id)
-                                }, isTargeted: { target in projectDropTarget = target ? project.id : nil })
-                                .overlay(alignment: .top) { if projectDropTarget == project.id { Rectangle().fill(Palette.accent).frame(height: 2) } }
+                                .onDrop(of: [.text], delegate: ProjectDropDelegate(state: state, projectID: project.id, target: $projectDropTarget, after: $projectDropAfter))
+                                .overlay(alignment: projectDropAfter ? .bottom : .top) {
+                                    if projectDropTarget == project.id { Rectangle().fill(Palette.accent).frame(height: 2).allowsHitTesting(false) }
+                                }
+                                .accessibilityElement(children: .combine).accessibilityAddTraits(.isButton)
+                                .accessibilityAction { openProject(project) }
+                                .focusable().focusEffectDisabled()
+                                .onKeyPress(.return) { openProject(project); return .handled }
                                 .contextMenu {
                                     Button("Переместить выше") { shiftProject(project, by: -1) }.disabled(projectPeers(project).first?.id == project.id)
                                     Button("Переместить ниже") { shiftProject(project, by: 1) }.disabled(projectPeers(project).last?.id == project.id)
@@ -106,6 +106,10 @@ struct Sidebar: View {
             nav("Корзина", symbol: "trash", scope: .trash)
             Text(state.isDemo ? "Демо · вымышленные данные" : "Толк · локально на Mac").font(.system(size: 10)).foregroundStyle(.secondary).padding(.top, 10).padding(.leading, 8)
         }.padding(12).background(Palette.sidebar)
+    }
+    private func openProject(_ project: Project) {
+        state.scope = .project(project.id); state.selectedID = nil
+        state.area = project.kind == .note ? .notes : .tasks
     }
     private func countBadge(_ count: Int) -> some View { Text("\(count)").font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary).fixedSize().frame(minWidth: 18, alignment: .trailing) }
     private func projectPeers(_ project: Project) -> [Project] { state.activeProjects.filter { $0.folder == project.folder } }
@@ -128,7 +132,7 @@ struct Sidebar: View {
     private func tagTree(parent: UUID?, level: Int) -> AnyView {
         AnyView(ForEach(state.data.tags.filter { $0.parentID == parent }) { tag in
             VStack(alignment: .leading, spacing: 0) {
-                Button { state.scope = .tag(tag.id); state.selectedID = nil } label: {
+                Button { state.filterByTag(tag.id) } label: {
                     HStack(spacing: 8) { Image(systemName: "number").foregroundStyle(Color(hex: tag.color)); Text(tag.name).lineLimit(1).layoutPriority(1); Spacer(minLength: 8); countBadge(state.taskCount(in: .tag(tag.id))) }
                         .padding(.leading, CGFloat(8 + level * 12)).padding(.trailing, 8).frame(height: 30).contentShape(Rectangle())
                 }.buttonStyle(.plain).background(state.scope == .tag(tag.id) ? Palette.accent.opacity(0.13) : .clear, in: RoundedRectangle(cornerRadius: 5))
@@ -289,5 +293,28 @@ struct ItemContextMenu: View {
             Divider()
             Button(item.kind == .note ? "Удалить заметку" : "Удалить задачу", role: .destructive) { state.delete(item.id) }
         }
+    }
+}
+
+/// Native text drops accept both SwiftUI task drags and NSString project drags.
+struct ProjectDropDelegate: DropDelegate {
+    let state: AppState
+    let projectID: UUID
+    @Binding var target: UUID?
+    @Binding var after: Bool
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        target = projectID; after = info.location.y >= 16
+        return DropProposal(operation: .move)
+    }
+    func dropExited(info: DropInfo) { if target == projectID { target = nil } }
+    func performDrop(info: DropInfo) -> Bool {
+        let insertAfter = info.location.y >= 16
+        target = nil
+        guard let provider = info.itemProviders(for: [.text]).first(where: { $0.canLoadObject(ofClass: String.self) }) else { return false }
+        _ = provider.loadObject(ofClass: String.self) { payload, _ in
+            guard let payload else { return }
+            Task { @MainActor in _ = state.acceptProjectDrop(payload, on: projectID, after: insertAfter) }
+        }
+        return true
     }
 }
