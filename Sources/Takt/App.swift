@@ -270,6 +270,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             }
         }
         let beforeCalendar = state.data
+        for index in 1...14 {
+            var item = Item(title: "На весь день \(index)")
+            item.schedule = .day(state.calendar.startOfDay(for: state.anchor))
+            state.add(item)
+        }
+        render(MainView(state: state), name: "calendar-all-day-overflow", width: 1440, height: 880)
+        render(MainView(state: state), name: "calendar-all-day-overflow-compact", width: 1080, height: 700)
+        state.change(undo: false) { $0 = beforeCalendar }
         if let source = state.data.items.first(where: { $0.schedule.isTimed }) {
             state.update(source.id) { $0.recurrence = .weekly }
             if let other = state.data.items.first(where: { $0.schedule.isTimed && $0.id != source.id }) { state.complete(other.id) }

@@ -77,24 +77,31 @@ struct CalendarView: View {
                 }.frame(height: headerHeight)
                 HStack(alignment: .top, spacing: 0) {
                     Text("Весь\nдень").font(.system(size: 10)).foregroundStyle(.secondary).frame(width: timeAxis, height: 38)
-                    ForEach(days, id: \.self) { day in
-                        VStack(spacing: 3) {
-                            ForEach(state.calendarItems.filter { !$0.schedule.isTimed && $0.schedule.date.map { state.calendar.isDate($0, inSameDayAs: day) } == true }) { item in
-                                HStack(spacing: 2) {
-                                    CompleteButton(item: item) { state.complete(item.id) }
-                                    Text(item.title).font(.system(size: compact ? 11 : 12)).strikethrough(item.completed).foregroundStyle(item.completed ? .secondary : .primary).lineLimit(1)
-                                }.padding(.horizontal, 3).frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(Color(hex: state.color(item)).opacity(item.completed ? 0.18 : 0.40), in: RoundedRectangle(cornerRadius: 3))
-                                    .onTapGesture { state.selectCalendar(item.id) }.onDrag { state.beginDrag(item) }
-                                    .popover(isPresented: editorBinding(item.id)) { ItemInspector(state: state, id: item.id).frame(width: 340, height: 620) }
+                    ScrollView(.vertical) {
+                        HStack(alignment: .top, spacing: 0) {
+                            ForEach(days, id: \.self) { day in
+                                let items = allDayItems(on: day)
+                                VStack(spacing: 3) {
+                                    ForEach(items) { item in
+                                        HStack(spacing: 2) {
+                                            CompleteButton(item: item) { state.complete(item.id) }
+                                            Text(item.title).font(.system(size: compact ? 11 : 12)).strikethrough(item.completed).foregroundStyle(item.completed ? .secondary : .primary).lineLimit(1)
+                                        }.padding(.horizontal, 3).frame(height: 26).frame(maxWidth: .infinity, alignment: .leading)
+                                            .background(Color(hex: state.color(item)).opacity(item.completed ? 0.18 : 0.40), in: RoundedRectangle(cornerRadius: 3))
+                                            .contentShape(Rectangle())
+                                            .onTapGesture { state.selectCalendar(item.id) }.onDrag { state.beginDrag(item) }
+                                            .popover(isPresented: editorBinding(item.id)) { ItemInspector(state: state, id: item.id).frame(width: 340, height: 620) }
+                                    }
+                                }.padding(3).frame(width: dayWidth, alignment: .top).frame(minHeight: 38)
+                                    .contentShape(Rectangle())
+                                    .dropDestination(for: String.self) { strings, _ in
+                                        guard let id = strings.first.flatMap(UUID.init(uuidString:)), state.item(id).map({ $0.kind == .task && !$0.deleted }) == true else { return false }
+                                        state.update(id) { $0.schedule = .day(day) }; state.endDrag(); return true
+                                    }
                             }
-                        }.padding(3).frame(width: dayWidth, alignment: .top).frame(minHeight: 38)
-                            .dropDestination(for: String.self) { strings, _ in
-                                guard let id = strings.first.flatMap(UUID.init(uuidString:)), state.item(id).map({ $0.kind == .task && !$0.deleted }) == true else { return false }
-                                state.update(id) { $0.schedule = .day(day) }; state.endDrag(); return true
-                            }
-                    }
-                }.frame(height: allDayHeight).clipped()
+                        }
+                    }.scrollIndicators(.visible).accessibilityLabel("Задачи на весь день")
+                }.frame(height: min(allDayHeight, max(64, min(220, geometry.size.height * 0.32))))
                 Divider()
                 ScrollViewReader { reader in
                     ScrollView(.vertical) {
@@ -117,11 +124,12 @@ struct CalendarView: View {
     private func editorBinding(_ id: UUID) -> Binding<Bool> {
         Binding(get: { state.calendarEditingID == id }, set: { if !$0 { state.calendarEditingID = nil } })
     }
+    private func allDayItems(on day: Date) -> [Item] {
+        state.calendarItems.filter { !$0.schedule.isTimed && $0.schedule.date.map { state.calendar.isDate($0, inSameDayAs: day) } == true }
+    }
     private var allDayHeight: Double {
-        let count = days.map { day in
-            state.calendarItems.filter { !$0.schedule.isTimed && $0.schedule.date.map { state.calendar.isDate($0, inSameDayAs: day) } == true }.count
-        }.max() ?? 0
-        return min(96, max(38, Double(count) * 26 + 6))
+        let count = days.map { allDayItems(on: $0).count }.max() ?? 0
+        return max(38, Double(count) * 29 + 6)
     }
     private func weekday(_ day: Date) -> String { let f = DateFormatter(); f.locale = Locale(identifier: "ru_RU"); f.timeZone = state.calendar.timeZone; f.dateFormat = "EE"; return f.string(from: day).capitalized }
 }
@@ -400,29 +408,34 @@ struct PlanningQueue: View {
     private func queueCard(_ item: Item) -> some View {
         HStack(spacing: 5) {
             CompleteButton(item: item) { state.complete(item.id) }
-            Button { state.selectedID = item.id; editingID = item.id } label: {
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 4) {
-                        if item.priority != 0 { Image(systemName: "flag.fill").font(.system(size: 9)).foregroundStyle(Color(nsColor: SemanticTint.priority(item.priority, dark: NSApp.effectiveAppearance.bestMatch(from: [.aqua,.darkAqua]) == .darkAqua))) }
-                        Text(item.title).font(.system(size: 12, weight: .medium)).lineLimit(1)
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 4) {
+                    if item.priority != 0 { Image(systemName: "flag.fill").font(.system(size: 9)).foregroundStyle(Color(nsColor: SemanticTint.priority(item.priority, dark: NSApp.effectiveAppearance.bestMatch(from: [.aqua,.darkAqua]) == .darkAqua))) }
+                    Text(item.title).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                }
+                HStack(spacing: 5) {
+                    Circle().fill(Color(hex: state.color(item))).frame(width: 5, height: 5)
+                    Text(state.projectName(item.projectID)).lineLimit(1)
+                    if let date = item.schedule.date { Text(state.dayLabel(date)).lineLimit(1) }
+                    if let tag = item.tagIDs.first.flatMap({ id in state.data.tags.first { $0.id == id } }) {
+                        Text("#" + tag.name).foregroundStyle(Color(hex: tag.color)).lineLimit(1)
+                        if item.tagIDs.count > 1 { Text("+\(item.tagIDs.count - 1)") }
                     }
-                    HStack(spacing: 5) {
-                        Circle().fill(Color(hex: state.color(item))).frame(width: 5, height: 5)
-                        Text(state.projectName(item.projectID)).lineLimit(1)
-                        if let date = item.schedule.date { Text(state.dayLabel(date)).lineLimit(1) }
-                        if let tag = item.tagIDs.first.flatMap({ id in state.data.tags.first { $0.id == id } }) {
-                            Text("#" + tag.name).foregroundStyle(Color(hex: tag.color)).lineLimit(1)
-                            if item.tagIDs.count > 1 { Text("+\(item.tagIDs.count - 1)") }
-                        }
-                    }.font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1)
-                }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading).contentShape(Rectangle())
-            }.buttonStyle(.plain).accessibilityLabel("Открыть: " + item.title)
+                }.font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1)
+            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading).contentShape(Rectangle())
             Text(item.duration % 60 == 0 ? "\(item.duration / 60) ч" : "\(item.duration) м").font(.system(size: 10)).monospacedDigit().foregroundStyle(.secondary).frame(width: 35)
         }.frame(height: 40).padding(.horizontal, 8).padding(.vertical, 6)
             .background(Color(hex: state.color(item)).opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
             .overlay { RoundedRectangle(cornerRadius: 6).stroke(Color(hex: state.color(item)).opacity(0.30), lineWidth: 0.5) }
-            .contentShape(Rectangle()).onDrag { state.beginDrag(item) }
-.help(queueHelp(item))
+            .contentShape(Rectangle())
+            .onTapGesture { state.selectedID = item.id; editingID = item.id }
+            .onDrag { state.beginDrag(item) }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Открыть: " + item.title)
+            .accessibilityAction { state.selectedID = item.id; editingID = item.id }
+            .focusable().focusEffectDisabled()
+            .onKeyPress(.return) { state.selectedID = item.id; editingID = item.id; return .handled }
+            .help(queueHelp(item))
             .popover(isPresented: Binding(get: { editingID == item.id }, set: { if !$0 { editingID = nil } })) {
                 ItemInspector(state: state, id: item.id).frame(width: 340, height: 620)
             }

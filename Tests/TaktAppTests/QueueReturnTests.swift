@@ -34,3 +34,25 @@ import TaktCore
     #expect(!state.queue.contains { $0.id == timed.id })
     #expect(state.queue.allSatisfy { !$0.schedule.isTimed })
 }
+
+@Test @MainActor func queueDragPayloadSurvivesSessionCleanupAndSchedulesOriginalTask() async throws {
+    let state = AppState(demo: true)
+    let item = try #require(state.queue.first)
+    let provider = state.beginDrag(item)
+    // A native drop loads the provider asynchronously, after drag cleanup.
+    state.endDrag()
+    let payload: String? = await withCheckedContinuation { continuation in
+        _ = provider.loadObject(ofClass: String.self) { value, _ in
+            continuation.resume(returning: value)
+        }
+    }
+    let id = try #require(payload.flatMap(UUID.init(uuidString:)))
+    #expect(id == item.id)
+    let destination = try #require(state.calendar.date(bySettingHour: 11, minute: 15, second: 0, of: Date()))
+    state.schedule(id, at: destination)
+    #expect(state.item(id)?.schedule == .timed(destination))
+    #expect(state.item(id)?.duration == item.duration)
+    #expect(!state.queue.contains { $0.id == id })
+    state.undo()
+    #expect(state.item(id) == item)
+}
