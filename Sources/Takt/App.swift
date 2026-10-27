@@ -60,7 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showMain(); return true }
-    func applicationWillTerminate(_ notification: Notification) { state.syncCoordinator?.stop(); keys?.stop(); reminderTimer?.invalidate() }
+    func applicationWillTerminate(_ notification: Notification) { state.flushQuickDraft(); state.syncCoordinator?.stop(); keys?.stop(); reminderTimer?.invalidate() }
     private func makeMenu() {
         let bar = NSMenu()
         let app = NSMenu(); let appItem = NSMenuItem(); appItem.submenu = app; bar.addItem(appItem)
@@ -122,7 +122,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         return NSRect(x: max(r.minX, min(origin.x, r.maxX - size.width)), y: max(r.minY, min(origin.y, r.maxY - size.height)), width: min(size.width, r.width), height: min(size.height, r.height))
     }
     func openQuick(date: Date?, duration: Int? = nil) {
-        if let quickPanel, quickPanel.isVisible { quickPanel.orderOut(nil); return }
+        if let quickPanel, quickPanel.isVisible { state.flushQuickDraft(); quickPanel.orderOut(nil); return }
         guard let screen = activeScreen() else { return }
         previousApplication = NSWorkspace.shared.frontmostApplication
         let panel = KeyPanel(contentRect: .zero, styleMask: [.borderless,.nonactivatingPanel], backing: .buffered, defer: false)
@@ -138,12 +138,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         let size = NSSize(width: 640, height: 62)
         panel.setFrame(bounded(NSPoint(x: screen.visibleFrame.midX - size.width / 2, y: screen.visibleFrame.midY - size.height / 2 + 100), size: size, screen: screen), display: true)
         panel.escape = { [weak self] in
-            self?.state.change(undo: false) { $0.preferences.quickDraft = ""; $0.preferences.quickDraftLiterals = nil; $0.preferences.quickDraftBody = nil; $0.preferences.quickDraftDescriptionExpanded = nil }
+            self?.state.clearQuickDraft()
             self?.closeQuick()
         }; panel.delegate = self
         quickPanel = panel; panel.orderFrontRegardless(); panel.makeKey()
     }
     private func closeQuick() {
+        state.flushQuickDraft()
         quickPanel?.orderOut(nil)
         if let previousApplication, previousApplication.processIdentifier != ProcessInfo.processInfo.processIdentifier { previousApplication.activate() }
     }

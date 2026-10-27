@@ -68,8 +68,8 @@ struct QuickCaptureView: View {
                                   move: { direction in guard !suggestions.isEmpty else { return false }; highlighted = (highlighted + direction + suggestions.count) % suggestions.count; return true },
                                   complete: { guard !suggestions.isEmpty else { return false }; choose(suggestions[min(highlighted, suggestions.count - 1)]); return true })
                     .frame(height: 30)
-                    .onChange(of: text) { _, value in highlighted = 0; state.change(undo: false) { $0.preferences.quickDraft = value; $0.preferences.quickDraftLiterals = literals } }
-                    .onChange(of: literals) { _, value in state.change(undo: false) { $0.preferences.quickDraftLiterals = value } }
+                    .onChange(of: text) { _, _ in highlighted = 0; queueDraft() }
+                    .onChange(of: literals) { _, _ in queueDraft() }
                 DurationControl(minutes: Binding(get: { parsed.duration }, set: { durationOverride = $0 }))
             }.padding(.horizontal, 18).frame(height: 62)
             if !visibleSuggestions.isEmpty {
@@ -94,13 +94,17 @@ struct QuickCaptureView: View {
             .preferredColorScheme(state.data.preferences.theme == "light" ? .light : state.data.preferences.theme == "dark" ? .dark : nil)
             .onAppear { heightChanged(panelHeight) }
             .onChange(of: panelHeight) { _, height in heightChanged(height) }
-            .onChange(of: description) { _, value in state.change(undo: false) { $0.preferences.quickDraftBody = value } }
-            .onChange(of: descriptionExpanded) { _, value in state.change(undo: false) { $0.preferences.quickDraftDescriptionExpanded = value } }
+            .onChange(of: description) { _, _ in queueDraft() }
+            .onChange(of: descriptionExpanded) { _, _ in queueDraft() }
+            .onDisappear { state.flushQuickDraft() }
             .onExitCommand(perform: cancel)
     }
     private func openDescription() { descriptionExpanded = true; titleFocused = false; descriptionFocus = UUID() }
     private func setText(_ value: String) { literals = QuickLiteralToken.rebased(literals, from: text, to: value); text = value }
-    private func cancel() { state.change(undo: false) { $0.preferences.quickDraft = ""; $0.preferences.quickDraftLiterals = nil; $0.preferences.quickDraftBody = nil; $0.preferences.quickDraftDescriptionExpanded = nil }; dismiss() }
+    private func queueDraft() {
+        state.queueQuickDraft(QuickCaptureDraft(text: text, literals: literals, body: description, descriptionExpanded: descriptionExpanded))
+    }
+    private func cancel() { state.clearQuickDraft(); dismiss() }
     private func choose(_ suggestion: CaptureSuggestion) {
         let name = String(token.dropFirst())
         if suggestion.createProject { state.change { $0.projects.append(Project(name: name, color: ProjectTagPalette.nextColor(in: $0))) } }
@@ -118,7 +122,7 @@ struct QuickCaptureView: View {
     private func save() {
         guard !parsed.title.isEmpty else { titleFocus = UUID(); return }
         guard state.capture(parsed, body: description, initialDate: initialDate) != nil else { return }
-        state.change(undo: false) { $0.preferences.quickDraft = ""; $0.preferences.quickDraftLiterals = nil; $0.preferences.quickDraftBody = nil; $0.preferences.quickDraftDescriptionExpanded = nil }; dismiss()
+        state.clearQuickDraft(); dismiss()
     }
 }
 

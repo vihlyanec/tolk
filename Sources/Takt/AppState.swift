@@ -46,14 +46,16 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
     @ObservationIgnored private var past: [SnapshotEdit] = []
     @ObservationIgnored private var future: [SnapshotEdit] = []
     @ObservationIgnored private var backupDay = ""
+    @ObservationIgnored private var pendingQuickDraft: QuickCaptureDraft?
+    @ObservationIgnored private var quickDraftSaveTask: Task<Void, Never>?
     let dataURL: URL
 
-    init(demo: Bool = false) {
+    init(demo: Bool = false, storageURL: URL? = nil) {
         memoryOnly = demo
         let syncTest = Bundle.main.bundleIdentifier == "local.takt.synctest" || ProcessInfo.processInfo.arguments.contains("--sync-test")
         let supportURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Takt", isDirectory: true).appendingPathComponent("takt.sqlite")
-        dataURL = syncTest ? URL(fileURLWithPath: ProcessInfo.processInfo.environment["TOLK_SYNC_TEST_DATA"] ?? "/private/tmp/tolk-sync-isolated/takt.sqlite") : supportURL
+        dataURL = storageURL ?? (syncTest ? URL(fileURLWithPath: ProcessInfo.processInfo.environment["TOLK_SYNC_TEST_DATA"] ?? "/private/tmp/tolk-sync-isolated/takt.sqlite") : supportURL)
         if demo { database = nil; data = Self.demo(); return }
         do {
             let db = try Database(url: dataURL); var snapshot = try db.load()
@@ -114,7 +116,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         case .tag(let id): "#" + (data.tags.first { $0.id == id }?.name ?? "Тег")
         }
     }
-    func change(undo: Bool = true, _ mutate: (inout Snapshot) -> Void) {
+    func change(undo: Bool = true, notifyServices: Bool = true, _ mutate: (inout Snapshot) -> Void) {
         guard database != nil || memoryOnly else { return }
         let previous = data
         var next = previous; mutate(&next)
@@ -134,8 +136,31 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
                 try database.save(next)
             }
             if undo { past.append(SnapshotEdit(before: previous, after: next)); if past.count > 80 { past.removeFirst() }; future.removeAll() }
-            data = next; didSave()
+            data = next
+            if notifyServices { didSave() }
         } catch { errorMessage = "Не сохранено: \(error.localizedDescription). Изменение не применено." }
+    }
+    func queueQuickDraft(_ draft: QuickCaptureDraft) {
+        // Keystrokes stay in the editor's local state. Do not invalidate the main
+        // calendar/list or encode, validate and fsync the entire snapshot here.
+        pendingQuickDraft = draft
+        quickDraftSaveTask?.cancel()
+        quickDraftSaveTask = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
+            guard !Task.isCancelled else { return }
+            self?.flushQuickDraft()
+        }
+    }
+    func flushQuickDraft() {
+        quickDraftSaveTask?.cancel(); quickDraftSaveTask = nil
+        guard let draft = pendingQuickDraft else { return }
+        pendingQuickDraft = nil
+        // A draft does not change tasks, reminders, shortcuts or the sync outbox.
+        change(undo: false, notifyServices: false) { draft.apply(to: &$0.preferences) }
+    }
+    func clearQuickDraft() {
+        quickDraftSaveTask?.cancel(); quickDraftSaveTask = nil; pendingQuickDraft = nil
+        change(undo: false, notifyServices: false) { QuickCaptureDraft().apply(to: &$0.preferences) }
     }
     func update(_ id: UUID, _ action: (inout Item) -> Void) {
         let projected = item(id)
@@ -298,6 +323,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         } catch { errorMessage = error.localizedDescription }
     }
     func restore(_ snapshot: Snapshot) {
+        quickDraftSaveTask?.cancel(); quickDraftSaveTask = nil; pendingQuickDraft = nil
         syncCoordinator?.disconnectApple(); syncCoordinator?.disconnectTickTick()
         change(undo: false) { $0 = snapshot }; past.removeAll(); future.removeAll()
     }

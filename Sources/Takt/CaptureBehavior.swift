@@ -1,6 +1,20 @@
 import Foundation
 import TaktCore
 
+struct QuickCaptureDraft: Equatable {
+    var text = ""
+    var literals: [QuickLiteralToken]?
+    var body: String?
+    var descriptionExpanded: Bool?
+
+    func apply(to preferences: inout Preferences) {
+        preferences.quickDraft = text
+        preferences.quickDraftLiterals = literals
+        preferences.quickDraftBody = body
+        preferences.quickDraftDescriptionExpanded = descriptionExpanded
+    }
+}
+
 enum CaptureSubmitAction { case applySuggestion, finishToken, create, stay }
 enum CaptureBehavior {
     static func submitAction(text: String, parsed: ParsedTask, suggestionCount: Int) -> CaptureSubmitAction {
