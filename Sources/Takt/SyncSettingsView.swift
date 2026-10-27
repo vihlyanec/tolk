@@ -4,6 +4,11 @@ import TaktCore
 struct SyncSettingsSections: View {
     @Bindable var state: AppState
     @ViewState private var token = ""
+    private func conflictDescription(key: String, connection: TickTickSyncState) -> String {
+        let localTitle: String = state.data.items.first(where: { $0.id.uuidString == key })?.title ?? ""
+        let remoteTitle: String = connection.conflicts[key]?.remote.title ?? ""
+        return "В Толке: \(localTitle)\nВ TickTick: \(remoteTitle)"
+    }
     var body: some View {
         if let sync = state.syncCoordinator {
             Section("Apple Календарь") {
@@ -53,7 +58,7 @@ struct SyncSettingsSections: View {
                         ForEach(connection.conflicts.keys.sorted(), id: \.self) { key in
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(state.data.items.first { $0.id.uuidString == key }?.title ?? "Задача").fontWeight(.medium)
-                                Text("В Толке: " + (state.data.items.first { $0.id.uuidString == key }?.title ?? "") + "\nВ TickTick: " + (connection.conflicts[key]?.remote.title ?? "")).font(.system(size: 11)).foregroundStyle(.secondary)
+                                Text(conflictDescription(key: key, connection: connection)).font(.system(size: 11)).foregroundStyle(.secondary)
                                 HStack {
                                     Button("Оставить версию Толка") { state.change(undo: false) { SyncEngine.resolve(key: key, useLocal: true, in: &$0) }; sync.refreshTickTick(manual: true) }
                                     Button("Принять TickTick") { state.change(undo: false) { SyncEngine.resolve(key: key, useLocal: false, in: &$0) } }
