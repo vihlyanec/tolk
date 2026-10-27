@@ -8,18 +8,23 @@ public struct EventPlacement: Identifiable, Sendable {
     public let laneCount: Int
 }
 public enum CalendarLayout {
-    public static func placements(items: [Item], day: Date, calendar: Calendar) -> [EventPlacement] {
+    public static func placements(items: [Item], day: Date, calendar: Calendar, external: [ExternalEvent] = []) -> [EventPlacement] {
         let start = calendar.startOfDay(for: day)
         guard let end = calendar.date(byAdding: .day, value: 1, to: start) else { return [] }
-        let segments: [(UUID, Double, Double)] = items.compactMap { item in
+        let tasks: [(UUID, Date, Date)] = items.compactMap { item in
             guard item.kind == .task, !item.deleted, item.schedule.isTimed,
                   let s = item.schedule.date, let e = item.end, s < end, e > start else { return nil }
-            func minute(_ date: Date) -> Double {
-                if date <= start { return 0 }; if date >= end { return 1440 }
-                let parts = calendar.dateComponents([.hour, .minute], from: date)
-                return Double((parts.hour ?? 0) * 60 + (parts.minute ?? 0))
-            }
-            return (item.id, minute(max(s, start)), minute(min(e, end)))
+            return (item.id, s, e)
+        }
+        let events = external.filter { !$0.allDay }.map { ($0.id, $0.start, $0.end) }
+        func minute(_ date: Date) -> Double {
+            if date <= start { return 0 }; if date >= end { return 1440 }
+            let parts = calendar.dateComponents([.hour, .minute, .second], from: date)
+            return Double((parts.hour ?? 0) * 60 + (parts.minute ?? 0)) + Double(parts.second ?? 0) / 60
+        }
+        let segments: [(UUID, Double, Double)] = (tasks + events).compactMap { id, s, e in
+            guard s < end, e > start else { return nil }
+            return (id, minute(max(s, start)), minute(min(e, end)))
         }.sorted { $0.1 == $1.1 ? ($0.2 == $1.2 ? $0.0.uuidString < $1.0.uuidString : $0.2 > $1.2) : $0.1 < $1.1 }
         var output: [EventPlacement] = [], cluster: [(UUID, Double, Double)] = [], clusterEnd = -1.0
         func flush(_ group: [(UUID, Double, Double)]) -> [EventPlacement] {

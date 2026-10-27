@@ -14,6 +14,10 @@ trap 'rm -rf "$takt_stage_dir"' EXIT
 mkdir -p "$tolk_output"
 tolk_variants=("Толк" "Толк Demo")
 if [[ ${TOLK_RELEASE:-0} == 1 ]]; then tolk_variants=("Толк"); fi
+if [[ ${TOLK_SYNC_TEST:-0} == 1 ]]; then
+    if [[ ${TOLK_RELEASE:-0} == 1 ]]; then print -u2 "Sync Test не может быть релизом"; exit 1; fi
+    tolk_variants=("Толк Sync Test")
+fi
 for takt_variant in "${tolk_variants[@]}"; do
     takt_bundle="$takt_stage_dir/$takt_variant.app"
     mkdir -p "$takt_bundle/Contents/MacOS" "$takt_bundle/Contents/Resources" "$takt_bundle/Contents/Frameworks"
@@ -30,6 +34,11 @@ for takt_variant in "${tolk_variants[@]}"; do
         /usr/libexec/PlistBuddy -c 'Set :CFBundleName Толк Demo' "$takt_bundle/Contents/Info.plist"
         /usr/libexec/PlistBuddy -c 'Set :CFBundleDisplayName Толк Demo' "$takt_bundle/Contents/Info.plist"
     fi
+    if [[ "$takt_variant" == "Толк Sync Test" ]]; then
+        /usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier local.takt.synctest' "$takt_bundle/Contents/Info.plist"
+        /usr/libexec/PlistBuddy -c 'Set :CFBundleName Толк Sync Test' "$takt_bundle/Contents/Info.plist"
+        /usr/libexec/PlistBuddy -c 'Set :CFBundleDisplayName Толк Sync Test' "$takt_bundle/Contents/Info.plist"
+    fi
     tolk_config_args=()
     if [[ ${TOLK_RELEASE:-0} == 1 ]]; then tolk_config_args=(--release); fi
     python3 scripts/configure_bundle.py "$takt_bundle" "${tolk_config_args[@]}"
@@ -38,5 +47,9 @@ for takt_variant in "${tolk_variants[@]}"; do
     # Remove only the generated destination: ditto merges could retain obsolete app files.
     if [[ -d "$tolk_output/$takt_variant.app" ]]; then rm -rf "$tolk_output/$takt_variant.app"; fi
     ditto --norsrc "$takt_bundle" "$tolk_output/$takt_variant.app"
+    # File Provider can attach Finder/resource-fork metadata during the destination copy.
+    # Clear generated bundle metadata and verify the deliverable, not only the stage.
+    xattr -cr "$tolk_output/$takt_variant.app"
+    codesign --verify --deep --strict "$tolk_output/$takt_variant.app"
 done
-print "Готово: $tolk_output/Толк.app"
+for takt_variant in "${tolk_variants[@]}"; do print "Готово: $tolk_output/$takt_variant.app"; done

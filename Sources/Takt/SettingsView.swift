@@ -55,6 +55,7 @@ struct SettingsView: View {
                 }
                 Text("Закрытие главного окна оставляет приложение в строке меню. Команда «Завершить» останавливает глобальные сочетания и напоминания.").font(.system(size: 11)).foregroundStyle(.secondary)
             }
+            SyncSettingsSections(state: state)
             Section("Данные на этом Mac") {
                 Text(state.dataURL.path).font(.system(size: 10)).textSelection(.enabled).foregroundStyle(.secondary)
                 HStack {
@@ -104,7 +105,7 @@ struct SettingsView: View {
             guard alert.runModal() == .alertFirstButtonReturn else { return }
             let backup = state.dataURL.deletingLastPathComponent().appendingPathComponent("before-restore-\(UUID().uuidString).json")
             try Database.export(state.data, to: backup)
-            state.change { $0 = imported }; state.selectedID = nil; state.scope = .all
+            state.restore(imported); state.selectedID = nil; state.scope = .all
             state.notice = "Данные восстановлены"
         } catch { state.errorMessage = "Не удалось восстановить: \(error.localizedDescription)" }
     }

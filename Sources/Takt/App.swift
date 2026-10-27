@@ -33,15 +33,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         LSRegisterURL(Bundle.main.bundleURL as CFURL, true)
         if let url = Bundle.main.url(forResource: "BrandIcon", withExtension: "png"), let icon = NSImage(contentsOf: url) { NSApp.applicationIconImage = icon }
         if !state.isDemo { state.appUpdater = AppUpdater() }
+        state.syncCoordinator = SyncCoordinator(state: state)
+        state.syncCoordinator?.start()
         makeMenu()
         state.showQuick = { [weak self] date in self?.openQuick(date: date) }
         state.showRangeQuick = { [weak self] date, duration in self?.openQuick(date: date, duration: duration) }
         state.showSticky = { [weak self] id in self?.openSticky(id: id) }
         state.showSettings = { [weak self] in self?.openSettings() }
         reminders.reportError = { [weak self] text in self?.state.errorMessage = text }
-        state.didSave = { [weak self] in self?.refreshServices() }
+        state.didSave = { [weak self] in self?.refreshServices(); self?.state.syncCoordinator?.localChanged() }
         state.onTaskCompleted = { [weak self] preferences in self?.completionFeedback.play(preferences) }
-        keys = HotKeys { [weak self] id in if id == 1 { self?.openQuick(date: nil) } else { self?.openSticky(id: nil) } }
+        if !state.isSyncTest { keys = HotKeys { [weak self] id in if id == 1 { self?.openQuick(date: nil) } else { self?.openSticky(id: nil) } } }
         refreshServices()
         if !state.isDemo {
             reminderTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
@@ -54,7 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showMain(); return true }
-    func applicationWillTerminate(_ notification: Notification) { keys?.stop(); reminderTimer?.invalidate() }
+    func applicationWillTerminate(_ notification: Notification) { state.syncCoordinator?.stop(); keys?.stop(); reminderTimer?.invalidate() }
     private func makeMenu() {
         let bar = NSMenu()
         let app = NSMenu(); let appItem = NSMenuItem(); appItem.submenu = app; bar.addItem(appItem)
@@ -101,6 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         if mainWindow == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1440, height: 880), styleMask: [.titled,.closable,.miniaturizable,.resizable], backing: .buffered, defer: false)
             window.title = ProcessInfo.processInfo.arguments.contains("--demo") || Bundle.main.bundleIdentifier == "local.takt.demo" ? "Толк — демонстрация, данные не сохраняются" : "Толк"
+            if state.isSyncTest { window.title = "Толк Sync Test — отдельные тестовые данные" }
             window.contentMinSize = NSSize(width: 1080, height: 640)
             window.contentView = host(MainView(state: state)); window.center(); window.delegate = self
             window.isReleasedWhenClosed = false; window.setFrameAutosaveName("TaktMain"); mainWindow = window
@@ -268,6 +271,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
                 guard let png = bitmap.representation(using: .png, properties: [:]) else { return }
                 do { try png.write(to: directory.appendingPathComponent(name + ".png")) } catch { FileHandle.standardError.write(Data(error.localizedDescription.utf8)) }
             }
+        }
+        if ProcessInfo.processInfo.arguments.contains("--render-sync") {
+            state.syncCoordinator = SyncCoordinator(state: state)
+            state.syncCoordinator?.appleVisible = true
+            state.syncCoordinator?.appleStatus = "Демонстрация · вымышленные события"
+            var connection = AppleCalendarState()
+            let source = ExternalCalendar(id: "demo", sourceID: "demo", name: "Личный календарь", account: "Демонстрация", color: "BF86E8")
+            connection.calendars = [source]; connection.selected = [source.id]
+            let day = state.calendar.startOfDay(for: state.anchor)
+            let start = state.calendar.date(bySettingHour: 11, minute: 0, second: 0, of: day)!
+            var events = [ExternalEvent(calendarID: source.id, sourceID: source.sourceID, eventID: "meeting", title: "Встреча в Apple Календаре", notes: "Вымышленное событие для проверки отображения.", location: "Кофейня", start: start, end: start.addingTimeInterval(5400))]
+            for n in 0..<10 { events.append(ExternalEvent(calendarID: source.id, sourceID: source.sourceID, eventID: "all-\(n)", title: "Событие на весь день \(n + 1)", start: day, end: state.calendar.date(byAdding: .day, value: 2, to: day)!, allDay: true, timeZone: state.calendar.timeZone.identifier)) }
+            connection.replace(AppleCalendarWindow(start: day, end: state.calendar.date(byAdding: .day, value: 3, to: day)!, events: events))
+            state.change(undo: false) { $0.appleCalendar = connection }
+            render(MainView(state: state), name: "sync-calendar", width: 1440, height: 880)
+            render(MainView(state: state), name: "sync-calendar-compact", width: 1080, height: 700)
+            render(MainView(state: state), name: "sync-calendar-light", width: 1440, height: 880, scheme: .light)
+            state.calendarMode = "Месяц"
+            render(MainView(state: state), name: "sync-month", width: 1080, height: 700)
+            render(ExternalEventInspector(event: events[0], source: source, calendar: state.calendar), name: "sync-event", width: 340, height: 430)
+            render(Form { SyncSettingsSections(state: state) }.formStyle(.grouped), name: "sync-settings", width: 580, height: 800)
+            NSApp.terminate(nil); return
         }
         let beforeCalendar = state.data
         for index in 1...14 {

@@ -28,6 +28,8 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
     var queueDateFilter = "Без времени"
     var queueSearch = ""
     var appUpdater: AppUpdater?
+    var syncCoordinator: SyncCoordinator?
+    var externalEventID: UUID?
     var errorMessage: String?
     var notice: String?
     var inspectorVisible = true
@@ -41,15 +43,17 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
     @ObservationIgnored var onTaskCompleted: (Preferences) -> Void = { _ in }
     @ObservationIgnored private let database: Database?
     @ObservationIgnored private let memoryOnly: Bool
-    @ObservationIgnored private var past: [Snapshot] = []
-    @ObservationIgnored private var future: [Snapshot] = []
+    @ObservationIgnored private var past: [SnapshotEdit] = []
+    @ObservationIgnored private var future: [SnapshotEdit] = []
     @ObservationIgnored private var backupDay = ""
     let dataURL: URL
 
     init(demo: Bool = false) {
         memoryOnly = demo
-        dataURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let syncTest = Bundle.main.bundleIdentifier == "local.takt.synctest" || ProcessInfo.processInfo.arguments.contains("--sync-test")
+        let supportURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Takt", isDirectory: true).appendingPathComponent("takt.sqlite")
+        dataURL = syncTest ? URL(fileURLWithPath: ProcessInfo.processInfo.environment["TOLK_SYNC_TEST_DATA"] ?? "/private/tmp/tolk-sync-isolated/takt.sqlite") : supportURL
         if demo { database = nil; data = Self.demo(); return }
         do {
             let db = try Database(url: dataURL); var snapshot = try db.load()
@@ -63,6 +67,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
     }
     var calendar: Calendar { Dates.calendar(zone: data.preferences.timeZone) }
     var isDemo: Bool { memoryOnly }
+    var isSyncTest: Bool { Bundle.main.bundleIdentifier == "local.takt.synctest" || ProcessInfo.processInfo.arguments.contains("--sync-test") }
     var selected: Item? { data.items.first { $0.id == selectedID } }
     var draggingItem: Item? { draggingID.flatMap(item) }
     func beginDrag(_ item: Item, offset: Int = 0) -> NSItemProvider {
@@ -113,6 +118,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         guard database != nil || memoryOnly else { return }
         let previous = data
         var next = previous; mutate(&next)
+        if undo { SyncEngine.enqueueChanges(in: &next) }
         guard next != previous else { return }
         do {
             _ = try next.validated()
@@ -127,7 +133,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
                 }
                 try database.save(next)
             }
-            if undo { past.append(previous); if past.count > 80 { past.removeFirst() }; future.removeAll() }
+            if undo { past.append(SnapshotEdit(before: previous, after: next)); if past.count > 80 { past.removeFirst() }; future.removeAll() }
             data = next; didSave()
         } catch { errorMessage = "Не сохранено: \(error.localizedDescription). Изменение не применено." }
     }
@@ -274,16 +280,26 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         }
     }
     func undo() {
-        guard let saved = past.last else { return }
-        let previous = preservingStickyLayout(in: saved)
-        do { try database?.save(previous); future.append(data); data = previous; past.removeLast(); didSave() }
-        catch { errorMessage = error.localizedDescription }
+        guard let edit = past.last else { return }
+        do {
+            var previous = preservingStickyLayout(in: try edit.restoring(in: data))
+            SyncEngine.enqueueChanges(in: &previous)
+            let inverse = SnapshotEdit(before: data, after: previous)
+            try database?.save(previous); future.append(inverse); data = previous; past.removeLast(); didSave()
+        } catch { errorMessage = error.localizedDescription }
     }
     func redo() {
-        guard let saved = future.last else { return }
-        let next = preservingStickyLayout(in: saved)
-        do { try database?.save(next); past.append(data); data = next; future.removeLast(); didSave() }
-        catch { errorMessage = error.localizedDescription }
+        guard let edit = future.last else { return }
+        do {
+            var next = preservingStickyLayout(in: try edit.restoring(in: data))
+            SyncEngine.enqueueChanges(in: &next)
+            let inverse = SnapshotEdit(before: data, after: next)
+            try database?.save(next); past.append(inverse); data = next; future.removeLast(); didSave()
+        } catch { errorMessage = error.localizedDescription }
+    }
+    func restore(_ snapshot: Snapshot) {
+        syncCoordinator?.disconnectApple(); syncCoordinator?.disconnectTickTick()
+        change(undo: false) { $0 = snapshot }; past.removeAll(); future.removeAll()
     }
     // Content undo must not change the size or position of floating windows.
     private func preservingStickyLayout(in snapshot: Snapshot) -> Snapshot {
@@ -303,6 +319,11 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         return result
     }
     func item(_ id: UUID) -> Item? { data.items.first { $0.id == id } ?? calendarItems.first { $0.id == id } }
+    var externalEvents: [ExternalEvent] {
+        guard isDemo || syncCoordinator?.appleVisible == true else { return [] }
+        let available = Set(data.appleCalendar?.calendars.map(\.id) ?? [])
+        return (data.appleCalendar?.events ?? []).filter { available.contains($0.calendarID) }.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) || $0.notes.localizedCaseInsensitiveContains(search) }
+    }
     var calendarItems: [Item] {
         let start = calendar.dateInterval(of: calendarMode == "Месяц" ? .month : .weekOfYear, for: anchor)?.start ?? calendar.startOfDay(for: anchor)
         let lower = calendar.date(byAdding: .day, value: -7, to: start) ?? start

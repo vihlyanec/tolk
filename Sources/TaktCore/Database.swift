@@ -69,9 +69,14 @@ public final class Database {
     }
     public static func export(_ snapshot: Snapshot, to url: URL) throws {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(snapshot.validated()).write(to: url, options: .atomic)
+        var exported = snapshot
+        exported.tickTick = nil; exported.appleCalendar = nil
+        try encoder.encode(exported.validated()).write(to: url, options: .atomic)
     }
     public static func readExport(_ url: URL) throws -> Snapshot {
-        try JSONDecoder().decode(Snapshot.self, from: Data(contentsOf: url)).validated()
+        var imported = try JSONDecoder().decode(Snapshot.self, from: Data(contentsOf: url)).validated()
+        imported.tickTick = nil; imported.appleCalendar = nil
+        for i in imported.items.indices { imported.items[i].externalRecurrence = nil }
+        return imported
     }
 }

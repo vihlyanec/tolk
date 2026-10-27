@@ -22,6 +22,7 @@ public enum RecurringCalendar {
     public static func next(_ item: Item, in items: [Item], calendar: Calendar) -> Item? {
         var base = item
         if let date = item.recurrenceOriginalDate { base.schedule = item.schedule.isTimed ? .timed(date) : .day(date) }
+        guard item.externalRecurrence != true else { return nil }
         guard var next = Dates.nextOccurrence(base, calendar: calendar), let date = next.schedule.date else { return nil }
         let source = sourceID(for: item, in: items)
         next.id = identifier(source: source, date: date)
@@ -36,7 +37,7 @@ public enum RecurringCalendar {
         }
         var result = items.filter { $0.kind == .task && !$0.deleted && intersects($0) }
         let roots = items.filter { item in
-            item.kind == .task && !item.deleted && item.recurrence != .none && item.recurrenceSourceID == nil &&
+            item.kind == .task && !item.deleted && item.externalRecurrence != true && item.recurrence != .none && item.recurrenceSourceID == nil &&
             (item.repeatParentID == nil || !items.contains(where: { $0.id == item.repeatParentID }))
         }
         for source in roots {

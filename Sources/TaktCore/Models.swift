@@ -39,6 +39,7 @@ public struct CheckItem: Identifiable, Codable, Equatable, Sendable {
     public var id = UUID()
     public var title: String
     public var done = false
+    public var tickTickID: String?
     public init(title: String) { self.title = title }
 }
 public struct Item: Identifiable, Codable, Equatable, Sendable {
@@ -62,6 +63,7 @@ public struct Item: Identifiable, Codable, Equatable, Sendable {
     public var recurrenceSourceID: UUID?
     public var recurrenceOriginalDate: Date?
     public var repeatParentID: UUID?
+    public var externalRecurrence: Bool?
     public var reminderMinutes: Int?
     public var timedReminderOffsets: [Int]?
     public var allDayReminders: [AllDayReminder]?
@@ -99,6 +101,8 @@ public struct Preferences: Codable, Equatable, Sendable {
     public init() {}
 }
 public struct Snapshot: Codable, Equatable, Sendable {
+    public var tickTick: TickTickSyncState?
+    public var appleCalendar: AppleCalendarState?
     public var version = 1
     public var projects: [Project] = []
     public var tags: [Tag] = []
@@ -129,6 +133,16 @@ public struct Snapshot: Codable, Equatable, Sendable {
                 }
                 seen.insert(id); parent = next.parentID
             }
+        }
+        if let sync = tickTick {
+            guard [3, 5].contains(sync.options.intervalMinutes),
+                  sync.links.keys.allSatisfy({ UUID(uuidString: $0) != nil }),
+                  sync.outbox.keys.allSatisfy({ sync.links[$0] != nil }) else { throw TaktError.invalid("Повреждены связи синхронизации TickTick") }
+        }
+        if let apple = appleCalendar {
+            guard apple.windows.count <= 24, apple.windows.allSatisfy({ window in
+                window.end > window.start && window.events.allSatisfy { $0.end > $0.start && TimeZone(identifier: $0.timeZone) != nil }
+            }) else { throw TaktError.invalid("Повреждён кеш Apple Календаря") }
         }
         guard TimeZone(identifier: preferences.timeZone) != nil,
               (0...23).contains(preferences.startHour),

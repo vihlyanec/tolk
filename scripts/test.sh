@@ -11,5 +11,5 @@ if [[ -d "$takt_developer/Library/Developer/Frameworks/Testing.framework" ]]; th
         -Xswiftc -load-plugin-library -Xswiftc "$takt_developer/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib" \
         -Xlinker -rpath -Xlinker "$takt_developer/Library/Developer/Frameworks"
 else
-    swift test --disable-sandbox --cache-path "${TMPDIR:-/private/tmp}/takt-spm-cache" --scratch-path /private/tmp/takt-tests
+    swift test --disable-sandbox --cache-path "${TMPDIR:-/private/tmp}/takt-spm-cache" --scratch-path "$takt_scratch"
 fi
