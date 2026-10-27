@@ -213,7 +213,7 @@ import TaktCore
                         snapshot.tickTick?.links[localID.uuidString] = TickTickLink(remote: remote, local: baseline)
                     }
                 }
-                SyncEngine.ingest(projects: projects, tasks: tasks, inboxIDs: preview.inboxIDs, into: &snapshot)
+                SyncEngine.ingest(projects: projects, tasks: tasks, inboxIDs: preview.inboxIDs, columns: preview.columns, into: &snapshot)
                 snapshot.tickTick?.selectedProjects = Set(projects.map(\.id)); snapshot.tickTick?.includeInbox = self.importInbox
                 snapshot.tickTick?.lastSuccess = Date()
             }
@@ -291,7 +291,7 @@ import TaktCore
                 }
                 guard active() else { return }
                 self.state?.change(undo: false) { snapshot in
-                    SyncEngine.ingest(projects: pull.projects, tasks: pull.tasks, inboxIDs: pull.inboxIDs, into: &snapshot)
+                    SyncEngine.ingest(projects: pull.projects, tasks: pull.tasks, inboxIDs: pull.inboxIDs, columns: pull.columns, into: &snapshot)
                 }
                 let queued = self.state?.data.tickTick?.outbox ?? [:]
                 for (key, pending) in queued {

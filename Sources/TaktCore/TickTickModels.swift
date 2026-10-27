@@ -74,13 +74,32 @@ public struct TickTickLink: Codable, Equatable, Sendable {
     public var pendingCreate = false
     public var missing = false
     public var remoteDeleted = false
+    /// Last imported placement, kept separately from outbound task fields.
+    public var columnSection: String?
     public init(remote: TickTickTask, local: SyncFields, pendingCreate: Bool = false) { self.remote = remote; self.local = local; self.pendingCreate = pendingCreate }
 }
 public struct TickTickProjectLink: Codable, Equatable, Sendable {
     public var remote: TickTickProject
     public var localName: String
     public var localColor: String
+    public var columns: [TickTickColumnLink]?
     public init(remote: TickTickProject, local: Project) { self.remote = remote; localName = local.name; localColor = local.color }
+}
+public struct TickTickColumn: Codable, Equatable, Sendable, Identifiable {
+    public var id: String
+    public var projectId: String
+    public var name: String
+    public var sortOrder: Int64
+    public init(id: String, projectId: String, name: String, sortOrder: Int64) {
+        self.id = id; self.projectId = projectId; self.name = name; self.sortOrder = sortOrder
+    }
+}
+/// Stable remote identity with a unique local section label. Existing local sections
+/// remain strings; imported duplicate names are disambiguated rather than merged.
+public struct TickTickColumnLink: Codable, Equatable, Sendable {
+    public var remote: TickTickColumn
+    public var localSection: String
+    public init(remote: TickTickColumn, localSection: String) { self.remote = remote; self.localSection = localSection }
 }
 public struct TickTickSyncState: Codable, Equatable, Sendable {
     public var connectionID: UUID
@@ -95,6 +114,14 @@ public struct TickTickSyncState: Codable, Equatable, Sendable {
     public var includeInbox = true
     public var outbox: [String: TickTickPending] = [:]
     public var conflicts: [String: TickTickConflict] = [:]
+    public var unresolvedColumnTaskCount: Int {
+        links.values.filter { link in
+            guard !link.missing, !link.pendingCreate, let id = link.remote.raw["columnId"]?.string, !id.isEmpty,
+                  let project = projects.values.first(where: { $0.remote.id == link.remote.projectID }),
+                  let columns = project.columns else { return false }
+            return !columns.contains { $0.remote.id == id }
+        }.count
+    }
     public init(connectionID: UUID) { self.connectionID = connectionID }
 }
 public struct TickTickMerge: Equatable, Sendable {

@@ -1,7 +1,47 @@
 import Foundation
+import AppKit
+import SwiftUI
 import Testing
 import TaktCore
 @testable import Takt
+
+@Test @MainActor func demoKanbanImportGroupsTasksAndLocalMoveSurvivesRefreshAndUndo() throws {
+    let state = AppState(demo: true)
+    let remote = TickTickProject(["id": .string("qa-board"), "name": .string("Канбан TickTick · проверка"), "viewMode": .string("kanban")])
+    let columns = [TickTickColumn(id: "a", projectId: remote.id, name: "В работе", sortOrder: 0),
+                   TickTickColumn(id: "b", projectId: remote.id, name: "В работе", sortOrder: 1),
+                   TickTickColumn(id: "c", projectId: remote.id, name: "Готово к обсуждению с командой", sortOrder: 2)]
+    let tasks = columns.enumerated().map { i, column in
+        TickTickTask(["id": .string("qa-task-\(i)"), "projectId": .string(remote.id), "title": .string(["Подготовить макет", "Проверить договор", "Обсудить следующий шаг"][i]), "columnId": .string(column.id)])
+    }
+    state.change(undo: false) { snapshot in
+        snapshot.tickTick = TickTickSyncState(connectionID: UUID())
+        SyncEngine.ingest(projects: [remote], tasks: tasks, inboxIDs: ["inbox"], columns: [remote.id: columns], into: &snapshot)
+    }
+    let project = try #require(state.data.projects.first { $0.name == remote.name })
+    state.area = .tasks; state.scope = .project(project.id); state.grouping = .section
+    #expect(state.groups.map(\.id) == ["В работе", "В работе (TickTick 2)", "Готово к обсуждению с командой"])
+    let item = try #require(state.visibleItems.first { $0.title == "Подготовить макет" })
+    state.update(item.id) { $0.section = "В работе (TickTick 2)" }
+    #expect(state.data.tickTick?.outbox.isEmpty == true)
+    state.change(undo: false) { SyncEngine.ingest(projects: [remote], tasks: tasks, inboxIDs: ["inbox"], columns: [remote.id: columns], into: &$0) }
+    #expect(state.item(item.id)?.section == "В работе (TickTick 2)")
+    state.undo()
+    #expect(state.item(item.id)?.section == "В работе")
+    #expect(state.groups.count == 3 && state.data.tickTick != nil)
+    // Optional visual QA artifact; normal test runs do not write screenshots.
+    if let output = ProcessInfo.processInfo.environment["TOLK_KANBAN_QA_OUTPUT"] {
+        let root = NSHostingView(rootView: MainView(state: state).frame(width: 1440, height: 880).environment(\.colorScheme, .dark))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1440, height: 880), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: .darkAqua); window.contentView = root
+        root.frame = window.contentLayoutRect; root.layoutSubtreeIfNeeded(); window.displayIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2)); root.layoutSubtreeIfNeeded()
+        let bitmap = try #require(root.bitmapImageRepForCachingDisplay(in: root.bounds))
+        root.cacheDisplay(in: root.bounds, to: bitmap)
+        try #require(bitmap.representation(using: .png, properties: [:])).write(to: URL(fileURLWithPath: output))
+        window.contentView = nil
+    }
+}
 
 @Test @MainActor func demoNeverConnectsRealProvidersAndImportedCompletionDoesNotDuplicate() async throws {
     let state = AppState(demo: true)

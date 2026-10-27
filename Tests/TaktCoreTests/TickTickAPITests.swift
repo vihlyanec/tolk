@@ -61,3 +61,40 @@ private actor StubTickTickTransport: TickTickTransport {
     #expect(!TickTickAPIError.server(503).definitelyRejected)
     #expect(!TickTickAPIError.malformed.definitelyRejected)
 }
+
+@Test func tickTickPullReadsColumnsExactlyAndDistinguishesUnknownFromEmpty() async throws {
+    let transport = StubTickTickTransport([(200, #"[{"id":"p"},{"id":"q"},{"id":"r"}]"#),
+        (200, #"{"tasks":[]}"#),
+        (200, #"{"tasks":[],"columns":[{"id":"b","projectId":"p","name":"Позже","sortOrder":9223372036854775807},{"id":"a","projectId":"p","name":"Сначала","sortOrder":-9223372036854775808}]}"#),
+        (200, #"{"tasks":[],"columns":[]}"#), (200, #"{"tasks":[]}"#)])
+    let pull = try await TickTickAPI(token: "test", transport: transport).pull()
+    #expect(pull.columns["p"]?.map(\.id) == ["a", "b"])
+    #expect(pull.columns["p"]?.last?.sortOrder == Int64.max)
+    #expect(pull.columns["q"] == [] && pull.columns["r"] == nil)
+    #expect(await transport.requests.allSatisfy { $0.httpMethod == "GET" })
+}
+
+@Test func tickTickColumnEndpointValidatesForeignDuplicateAndMalformedRows() async throws {
+    for body in [#"[{"id":"a","projectId":"wrong","name":"Этап","sortOrder":0}]"#,
+                 #"[{"id":"a","projectId":"p","name":"Этап","sortOrder":0},{"id":"a","projectId":"p","name":"Другой","sortOrder":1}]"#,
+                 #"[{"id":"a","projectId":"p","sortOrder":0}]"#,
+                 #"[{"id":"a","projectId":"p","name":"Этап","sortOrder":0.5}]"#] {
+        let transport = StubTickTickTransport([(200, body)])
+        do { _ = try await TickTickAPI(token: "test", transport: transport).columns(projectID: "p"); Issue.record("Invalid columns accepted") }
+        catch { #expect(await transport.requests.count == 1) }
+    }
+    let transport = StubTickTickTransport([(200, #"[{"id":"a","projectId":"p","name":"Этап","sortOrder":5}]"#)])
+    #expect(try await TickTickAPI(token: "test", transport: transport).columns(projectID: "p").first?.id == "a")
+    #expect(await transport.requests.first?.url?.path == "/open/v1/project/p/column")
+}
+
+@Test func tickTickColumnFailureDoesNotBecomeEmptyImport() async throws {
+    for status in [401, 403, 404, 429, 503] {
+        let transport = StubTickTickTransport([(status, "")])
+        do { _ = try await TickTickAPI(token: "test", transport: transport).columns(projectID: "p"); Issue.record("Failure accepted") }
+        catch { #expect(await transport.requests.count == 1) }
+    }
+    let transport = StubTickTickTransport([(200, #"[{"id":"p"}]"#), (200, #"{"tasks":[]}"#), (200, #"{"tasks":[],"columns":{}}"#)])
+    do { _ = try await TickTickAPI(token: "test", transport: transport).pull(); Issue.record("Partial columns accepted") }
+    catch { #expect(await transport.requests.count == 3) }
+}

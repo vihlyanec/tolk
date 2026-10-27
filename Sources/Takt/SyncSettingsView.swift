@@ -54,6 +54,10 @@ struct SyncSettingsSections: View {
                     }
                     Toggle("Отправлять новые задачи из Входящих", isOn: Binding(get: { state.data.tickTick?.options.sendNewTasks ?? false }, set: { enabled in state.change { $0.tickTick?.options.sendNewTasks = enabled } }))
                     Text("Новые задачи в связанных проектах отправляются в TickTick. Старые локальные задачи не выгружаются. Удаление в локальную корзину не удаляет задачу в TickTick.").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text("Этапы канбана и расположение задач загружаются автоматически. Перенос задачи в другой раздел в Толке имеет приоритет и остаётся локальным.").font(.system(size: 11)).foregroundStyle(.secondary)
+                    if connection.unresolvedColumnTaskCount > 0 {
+                        Text("У задач (\(connection.unresolvedColumnTaskCount)) этап TickTick пока недоступен. Их размещение в Толке сохранено.").font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
                     if !connection.conflicts.isEmpty {
                         ForEach(connection.conflicts.keys.sorted(), id: \.self) { key in
                             VStack(alignment: .leading, spacing: 6) {

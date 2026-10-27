@@ -31,7 +31,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         // Register the actual bundle so notification banners resolve its .icns icon,
         // rather than relying only on the runtime Dock image.
         LSRegisterURL(Bundle.main.bundleURL as CFURL, true)
-        if let url = Bundle.main.url(forResource: "BrandIcon", withExtension: "png"), let icon = NSImage(contentsOf: url) { NSApp.applicationIconImage = icon }
+        if let filename = Bundle.main.object(forInfoDictionaryKey: "CFBundleIconFile") as? String,
+           let resources = Bundle.main.resourceURL,
+           let icon = NSImage(contentsOf: resources.appendingPathComponent(filename)) {
+            NSApp.applicationIconImage = icon
+        }
         if !state.isDemo { state.appUpdater = AppUpdater() }
         state.syncCoordinator = SyncCoordinator(state: state)
         state.syncCoordinator?.start()

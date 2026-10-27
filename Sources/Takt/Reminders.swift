@@ -41,40 +41,27 @@ final class Reminders {
         center.removePendingNotificationRequests(withIdentifiers: pending.filter { Self.isLegacy($0.content) || ($0.identifier.hasPrefix("task-") && !wantedIDs.contains($0.identifier)) }.map(\.identifier))
         for reminder in wanted {
             guard reminder.fire > Date(), !deliveredKeys.contains(reminder.identifier) else { continue }
-            if pending.contains(where: { $0.identifier == reminder.identifier && $0.content.title == reminder.title && $0.content.userInfo["formatVersion"] as? Int == 2 }) { continue }
-            let content = Self.content(for: reminder, logo: Self.makeLogo())
+            if pending.contains(where: { Self.isCurrent($0, for: reminder) }) { continue }
+            let content = Self.content(for: reminder)
             var components = Dates.calendar(zone: snapshot.preferences.timeZone).dateComponents([.year,.month,.day,.hour,.minute,.second], from: reminder.fire)
             components.timeZone = TimeZone(identifier: snapshot.preferences.timeZone)
             let request = UNNotificationRequest(identifier: reminder.identifier, content: content, trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: false))
-            do { try await center.add(request) }
-            catch {
-                // An unavailable image must never prevent the reminder itself from being scheduled.
-                guard !content.attachments.isEmpty else { throw error }
-                content.attachments = []
-                try await center.add(UNNotificationRequest(identifier: reminder.identifier, content: content, trigger: request.trigger))
-            }
+            try await center.add(request)
         }
     }
     static func isLegacy(_ content: UNNotificationContent) -> Bool {
         content.body.hasPrefix("Такт ·")
     }
-    static func content(for reminder: PlannedReminder, logo: UNNotificationAttachment? = nil) -> UNMutableNotificationContent {
+    static func content(for reminder: PlannedReminder) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = reminder.title; content.body = "Напоминание о задаче"
         content.sound = UNNotificationSound(named: UNNotificationSoundName("Completion.wav"))
         content.threadIdentifier = "task-" + reminder.itemID.uuidString
-        content.userInfo = ["eventKey": reminder.identifier, "itemID": reminder.itemID.uuidString, "formatVersion": 2]
-        if let logo { content.attachments = [logo] }
+        content.userInfo = ["eventKey": reminder.identifier, "itemID": reminder.itemID.uuidString, "formatVersion": 3]
         return content
     }
-    static func makeLogo(source: URL? = Bundle.main.url(forResource: "BrandIcon", withExtension: "png")) -> UNNotificationAttachment? {
-        guard let source else { return nil }
-        do {
-            let folder = FileManager.default.temporaryDirectory.appendingPathComponent("tolk-notification-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            let target = folder.appendingPathComponent("Logo-\(UUID().uuidString).png")
-            try FileManager.default.copyItem(at: source, to: target)
-            return try UNNotificationAttachment(identifier: "tolk-logo", url: target)
-        } catch { return nil }
+    static func isCurrent(_ request: UNNotificationRequest, for reminder: PlannedReminder) -> Bool {
+        request.identifier == reminder.identifier && request.content.title == reminder.title &&
+        request.content.userInfo["formatVersion"] as? Int == 3 && request.content.attachments.isEmpty
     }
 }

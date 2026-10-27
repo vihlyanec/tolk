@@ -47,13 +47,28 @@ import TaktCore
     #expect(content.threadIdentifier == "task-" + item.id.uuidString)
 }
 
-@Test @MainActor func everyNotificationOwnsItsAttachmentFile() throws {
+@Test @MainActor func notificationRefreshReplacesOldThumbnailFormatWithoutChangingIdentity() throws {
+    var snapshot = Snapshot()
+    var item = Item(title: "Проверка формата"); item.schedule = .timed(Date().addingTimeInterval(3600)); item.timedReminderOffsets = [0]
+    snapshot.items = [item]
+    let reminder = try #require(NotificationPlan.events(snapshot: snapshot).first)
+    let content = Reminders.content(for: reminder)
+    #expect(content.attachments.isEmpty)
+    #expect(content.userInfo["formatVersion"] as? Int == 3)
+    let current = UNNotificationRequest(identifier: reminder.identifier, content: content, trigger: nil)
+    #expect(Reminders.isCurrent(current, for: reminder))
+    let old = try #require(content.mutableCopy() as? UNMutableNotificationContent)
+    old.userInfo["formatVersion"] = 2
+    #expect(!Reminders.isCurrent(UNNotificationRequest(identifier: reminder.identifier, content: old, trigger: nil), for: reminder))
+    old.userInfo["formatVersion"] = 3; old.title = "Старое название"
+    #expect(!Reminders.isCurrent(UNNotificationRequest(identifier: reminder.identifier, content: old, trigger: nil), for: reminder))
+    old.title = reminder.title
     let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Resources/BrandIcon.png")
-    let first = try #require(Reminders.makeLogo(source: source))
-    let second = try #require(Reminders.makeLogo(source: source))
-    defer { try? FileManager.default.removeItem(at: first.url); try? FileManager.default.removeItem(at: second.url) }
-    #expect(first.url != second.url)
-    try FileManager.default.removeItem(at: first.url) // The notification service consumes the first file.
-    #expect(FileManager.default.fileExists(atPath: second.url.path))
-    #expect(FileManager.default.fileExists(atPath: source.path))
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("tolk-attachment-regression-" + UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let copy = directory.appendingPathComponent("old-logo.png")
+    try FileManager.default.copyItem(at: source, to: copy)
+    old.attachments = [try UNNotificationAttachment(identifier: "old-logo", url: copy)]
+    #expect(!Reminders.isCurrent(UNNotificationRequest(identifier: reminder.identifier, content: old, trigger: nil), for: reminder))
 }

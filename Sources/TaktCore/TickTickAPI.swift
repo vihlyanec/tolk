@@ -40,7 +40,11 @@ public struct TickTickPull: Sendable {
     public var projects: [TickTickProject]
     public var tasks: [TickTickTask]
     public var inboxIDs: Set<String>
-    public init(projects: [TickTickProject], tasks: [TickTickTask], inboxIDs: Set<String>) { self.projects = projects; self.tasks = tasks; self.inboxIDs = inboxIDs }
+    /// A missing key means unknown, whereas an empty array is a confirmed empty list.
+    public var columns: [String: [TickTickColumn]]
+    public init(projects: [TickTickProject], tasks: [TickTickTask], inboxIDs: Set<String>, columns: [String: [TickTickColumn]] = [:]) {
+        self.projects = projects; self.tasks = tasks; self.inboxIDs = inboxIDs; self.columns = columns
+    }
 }
 public struct TickTickAPI: Sendable {
     private let token: String
@@ -79,18 +83,33 @@ public struct TickTickAPI: Sendable {
         }
         throw TickTickAPIError.incomplete("Слишком много проектов для одного прохода синхронизации.")
     }
-    private func projectData(_ id: String) async throws -> (TickTickProject?, [TickTickTask]) {
+    private struct ProjectData: Decodable {
+        var project: TickTickProject?
+        var tasks: [TickTickTask]
+        var columns: [TickTickColumn]?
+    }
+    private func checkedColumns(_ values: [TickTickColumn], projectID: String) throws -> [TickTickColumn] {
+        guard values.allSatisfy({ !$0.id.isEmpty && $0.projectId == projectID && !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }),
+              Set(values.map(\.id)).count == values.count else { throw TickTickAPIError.malformed }
+        return values.sorted { $0.sortOrder == $1.sortOrder ? $0.id < $1.id : $0.sortOrder < $1.sortOrder }
+    }
+    public func columns(projectID: String) async throws -> [TickTickColumn] {
+        let data = try await request("project/\(component(projectID))/column")
+        return try checkedColumns(JSONDecoder().decode([TickTickColumn].self, from: data), projectID: projectID)
+    }
+    private func projectData(_ id: String) async throws -> (TickTickProject?, [TickTickTask], [TickTickColumn]?) {
         let data = try await request("project/\(component(id))/data")
-        let object = try JSONDecoder().decode(SyncFields.self, from: data)
-        guard let rows = object["tasks"]?.array else { throw TickTickAPIError.malformed }
-        let tasks = rows.compactMap(\.object).map(TickTickTask.init)
-        guard tasks.count == rows.count, tasks.allSatisfy({ !$0.id.isEmpty }) else { throw TickTickAPIError.malformed }
-        return (object["project"]?.object.map(TickTickProject.init), tasks)
+        let object = try JSONDecoder().decode(ProjectData.self, from: data)
+        guard object.tasks.allSatisfy({ !$0.id.isEmpty }),
+              id == "inbox" || object.project == nil || object.project?.id == id else { throw TickTickAPIError.malformed }
+        let columns = try object.columns.map { try checkedColumns($0, projectID: object.project?.id ?? id) }
+        return (object.project, object.tasks, columns)
     }
     public func pull(includeNotes: Bool = false) async throws -> TickTickPull {
         var projects = try await projects(), tasks: [TickTickTask] = [], inboxIDs: Set<String> = ["inbox"]
+        var columns: [String: [TickTickColumn]] = [:]
         do {
-            let (inbox, values) = try await projectData("inbox")
+            let (inbox, values, _) = try await projectData("inbox")
             if let inbox, !inbox.id.isEmpty { inboxIDs.insert(inbox.id) }
             inboxIDs.formUnion(values.map(\.projectID)); tasks += values
         } catch let error as TickTickAPIError where error == .missing || error == .forbidden {
@@ -102,11 +121,12 @@ public struct TickTickAPI: Sendable {
         }
         projects.removeAll { inboxIDs.contains($0.id) }
         for project in projects where includeNotes || !project.isNote {
-            let (_, values) = try await projectData(project.id); tasks += values
+            let (_, values, stages) = try await projectData(project.id); tasks += values
+            columns[project.id] = stages
         }
         var seen: Set<String> = []
         tasks = tasks.filter { !$0.id.isEmpty && (includeNotes || $0.kind != "NOTE") && seen.insert($0.id).inserted }
-        return TickTickPull(projects: projects.filter { includeNotes || !$0.isNote }, tasks: tasks, inboxIDs: inboxIDs)
+        return TickTickPull(projects: projects.filter { includeNotes || !$0.isNote }, tasks: tasks, inboxIDs: inboxIDs, columns: columns)
     }
     public func task(projectID: String, id: String) async throws -> TickTickTask? {
         do {
