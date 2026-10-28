@@ -274,10 +274,12 @@ struct CreationSheet: View {
     @ViewState private var folder = ""
     @ViewState private var itemKind: ItemKind = .task
     @ViewState private var parentID: UUID?
+    @ViewState private var sectionError: String?
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text(title).font(.system(size: 20, weight: .semibold))
-            TextField("Название", text: $name).onSubmit(save)
+            TextField("Название", text: $name).onSubmit(save).onChange(of: name) { _, _ in sectionError = nil }
+            if let sectionError { Text(sectionError).font(.system(size: 12)).foregroundStyle(.red) }
             switch kind {
             case .project(let id):
                 Picker("Тип", selection: $itemKind) { Text("Задачи").tag(ItemKind.task); Text("Заметки").tag(ItemKind.note) }.disabled(id != nil)
@@ -314,7 +316,7 @@ struct CreationSheet: View {
             HStack { Button("Отмена") { dismiss() }.keyboardShortcut(.cancelAction); Spacer(); Button("Сохранить", action: save).keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
         }.padding(26).frame(width: 390).onAppear(perform: load)
     }
-    private var title: String { switch kind { case .project(let id): id == nil ? "Новый проект" : "Изменить проект"; case .tag(let id): id == nil ? "Новый тег" : "Изменить тег"; case .section: "Новый раздел" } }
+    private var title: String { switch kind { case .project(let id): id == nil ? "Новый проект" : "Изменить проект"; case .tag(let id): id == nil ? "Новый тег" : "Изменить тег"; case .section(let id): state.data.projects.first(where: { $0.id == id })?.kanban == true ? "Новый этап" : "Новый раздел" } }
     private func load() {
         guard !loaded else { return }; loaded = true
         color = ProjectTagPalette.nextColor(in: state.data)
@@ -342,7 +344,8 @@ struct CreationSheet: View {
                 if let i = s.tags.firstIndex(where: { $0.id == id }) { s.tags[i].name = title; s.tags[i].color = color; s.tags[i].parentID = parentID }
                 else { s.tags.append(Tag(name: title, color: color, parentID: parentID)) }
             }
-        case .section(let id): state.change { s in if let i = s.projects.firstIndex(where: { $0.id == id }), !s.projects[i].sections.contains(title) { s.projects[i].sections.append(title) } }
+        case .section(let id):
+            if let message = state.createSection(title, in: id) { sectionError = message; return }
         }
         dismiss()
     }

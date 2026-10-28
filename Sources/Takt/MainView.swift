@@ -173,14 +173,19 @@ struct TaskListView: View {
                         }
                     }
                     Spacer(minLength: 4)
+                    if let project = state.project, project.kanban {
+                        Button { state.sheet = .section(project.id) } label: {
+                            Label("Добавить этап", systemImage: "plus")
+                        }.help("Создать этап в этом проекте").accessibilityIdentifier("kanban-add-stage")
+                    }
                     Text("\(state.visibleItems.count)").foregroundStyle(.secondary)
                 }.padding(.horizontal, 22).padding(.bottom, 14)
                 if state.area != .notes && state.scope != .trash && state.scope != .completed { InlineQuickEntry(state: state) }
                 Divider()
-                if state.visibleItems.isEmpty {
+                if state.project?.kanban == true { kanban }
+                else if state.visibleItems.isEmpty {
                     EmptyState(symbol: state.area == .notes ? "note.text" : "checkmark.circle", title: "Пока пусто", detail: state.search.isEmpty ? "Добавьте первую запись. Проекты и теги можно создать слева." : "По этому запросу ничего не найдено.")
-                } else if state.project?.kanban == true { kanban }
-                else {
+                } else {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 0) {
                             ForEach(state.groups) { group in

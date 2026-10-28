@@ -42,8 +42,9 @@ for takt_variant in "${tolk_variants[@]}"; do
     tolk_config_args=()
     if [[ ${TOLK_RELEASE:-0} == 1 ]]; then tolk_config_args=(--release); fi
     python3 scripts/configure_bundle.py "$takt_bundle" "${tolk_config_args[@]}"
-    codesign --force --sign - "$takt_bundle"
-    codesign --verify --deep --strict "$takt_bundle"
+    tolk_sign_args=()
+    if [[ ${TOLK_RELEASE:-0} == 1 && ${TOLK_TEST_BUILD:-0} != 1 ]]; then tolk_sign_args=(--release); fi
+    python3 scripts/sign_bundle.py "$takt_bundle" "${tolk_sign_args[@]}"
     # Remove only the generated destination: ditto merges could retain obsolete app files.
     if [[ -d "$tolk_output/$takt_variant.app" ]]; then rm -rf "$tolk_output/$takt_variant.app"; fi
     ditto --norsrc "$takt_bundle" "$tolk_output/$takt_variant.app"

@@ -16,6 +16,7 @@ import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 from configure_bundle import ROOT, read_configuration
+from sign_bundle import identity_for
 
 RELEASES = Path(os.environ.get('TOLK_RELEASE_DIR', ROOT / 'build/releases'))
 SPARKLE_NAMESPACE = '{http://www.andymatuschak.org/xml-namespaces/sparkle}'
@@ -80,6 +81,7 @@ def backup_key(destination):
     print('Копия ключа сохранена. Храните её в защищённом хранилище; в GitHub её загружать не нужно.')
 
 def prepare(args):
+    application_identity = identity_for(release=not args.test_build)
     commit, clean = source_state()
     if (not clean or commit is None) and not args.test_build:
         raise ValueError('Перед выпуском сохраните изменения исходников в Git. Для локального теста используйте --test-build --key-file ВРЕМЕННЫЙ_КЛЮЧ')
@@ -101,7 +103,7 @@ def prepare(args):
     # Stage outside the File Provider workspace until the app and feed are complete.
     with tempfile.TemporaryDirectory(prefix='tolk-release-', dir='/private/tmp') as temp:
         stage = Path(temp); apps = stage / 'apps'; feed = stage / 'feed'; feed.mkdir()
-        env = dict(os.environ, TOLK_RELEASE='1', TOLK_UNIVERSAL='1', TOLK_VERSION=args.version,
+        env = dict(os.environ, TOLK_RELEASE='1', TOLK_TEST_BUILD='1' if args.test_build else '0', TOLK_UNIVERSAL='1', TOLK_VERSION=args.version,
                    TOLK_BUILD=str(args.build), TOLK_OUTPUT_DIR=str(apps))
         run(['zsh', 'scripts/build.sh'], env=env)
         app = apps / 'Толк.app'
@@ -126,7 +128,7 @@ def prepare(args):
         (feed / 'checksums.txt').write_text(''.join(f'{digest}  {name}\n' for name,digest in checksums.items()))
         checksums['checksums.txt'] = hashlib.sha256((feed / 'checksums.txt').read_bytes()).hexdigest()
         (feed / 'manifest.json').write_text(json.dumps(dict(version=args.version, build=args.build, repository=config['repository'],
-            public_key=config['public_key'], source_commit=commit, source_clean=clean, test_build=args.test_build, sha256=checksums), ensure_ascii=False, indent=2) + '\n')
+            public_key=config['public_key'], application_signing_identity=application_identity, source_commit=commit, source_clean=clean, test_build=args.test_build, sha256=checksums), ensure_ascii=False, indent=2) + '\n')
         shutil.copytree(feed, folder)
     print(f'Выпуск подготовлен: {folder}')
     if args.test_build: print('Это тестовая сборка. Её загрузка и публикация запрещены.')

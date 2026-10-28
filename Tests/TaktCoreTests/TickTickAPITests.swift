@@ -23,6 +23,33 @@ private actor StubTickTickTransport: TickTickTransport {
     #expect(requests.count == 3 && requests.allSatisfy { $0.httpMethod == "GET" })
     #expect(requests[0].url?.query?.contains("offset=0&limit=200") == true)
 }
+@Test func tickTickInboxAliasDoesNotRejectRealInboxColumnProjectID() async throws {
+    let transport = StubTickTickTransport([(200, #"[{"id":"p","name":"Work"}]"#),
+        (200, #"{"tasks":[{"id":"incoming","projectId":"real-inbox","title":"Входящая"}],"columns":[{"id":"c","projectId":"real-inbox","name":"Входящие","sortOrder":0}]}"#),
+        (200, #"{"tasks":[{"id":"work","projectId":"p"}],"columns":[{"id":"stage","projectId":"p","name":"Этап","sortOrder":0}]}"#)])
+    let pull = try await TickTickAPI(token: "fixture", transport: transport).pull()
+    #expect(pull.inboxIDs.contains("real-inbox") && pull.tasks.count == 2)
+    #expect(pull.columns["inbox"] == nil && pull.columns["real-inbox"] == nil)
+    #expect(pull.columns["p"]?.first?.id == "stage")
+    var snapshot = Snapshot(); snapshot.tickTick = TickTickSyncState(connectionID: UUID())
+    SyncEngine.ingest(projects: pull.projects, tasks: pull.tasks, inboxIDs: pull.inboxIDs, columns: pull.columns, into: &snapshot)
+    #expect(snapshot.items.first { $0.title == "Входящая" }?.projectID == nil)
+    #expect(snapshot.projects.count == 1 && snapshot.projects[0].sections.contains("Этап"))
+    #expect(await transport.requests.allSatisfy { $0.httpMethod == "GET" })
+}
+
+@Test func tickTickUnusedInboxColumnsCannotBlockTaskLoadingButForeignProjectColumnsStillFail() async throws {
+    for columns in [#"{"futureShape":true}"#, #"[{"id":"a","projectId":"actual-inbox","name":"","sortOrder":0}]"#, "null"] {
+        let transport = StubTickTickTransport([(200, "[]"), (200, #"{"tasks":[],"columns":\#(columns)}"#)])
+        let pull = try await TickTickAPI(token: "fixture", transport: transport).pull()
+        #expect(pull.tasks.isEmpty && pull.columns.isEmpty)
+    }
+    let transport = StubTickTickTransport([(200, #"[{"id":"p"}]"#),
+        (200, #"{"tasks":[]}"#),
+        (200, #"{"tasks":[],"columns":[{"id":"a","projectId":"other-project","name":"Этап","sortOrder":0}]}"#)])
+    do { _ = try await TickTickAPI(token: "fixture", transport: transport).pull(); Issue.record("Foreign project columns accepted") }
+    catch let error as TickTickAPIError { #expect(error == .malformed) }
+}
 @Test func tickTickFilterAtLimitRefusesPartialImport() async throws {
     let rows = (0..<200).map { #"{"id":"task\#($0)","projectId":"inbox"}"# }.joined(separator: ",")
     let transport = StubTickTickTransport([(200, "[]"), (404, ""), (200, "[" + rows + "]")])

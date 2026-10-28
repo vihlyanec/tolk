@@ -86,6 +86,8 @@ public struct TickTickAPI: Sendable {
     private struct ProjectData: Decodable {
         var project: TickTickProject?
         var tasks: [TickTickTask]
+    }
+    private struct ColumnData: Decodable {
         var columns: [TickTickColumn]?
     }
     private func checkedColumns(_ values: [TickTickColumn], projectID: String) throws -> [TickTickColumn] {
@@ -102,7 +104,15 @@ public struct TickTickAPI: Sendable {
         let object = try JSONDecoder().decode(ProjectData.self, from: data)
         guard object.tasks.allSatisfy({ !$0.id.isEmpty }),
               id == "inbox" || object.project == nil || object.project?.id == id else { throw TickTickAPIError.malformed }
-        let columns = try object.columns.map { try checkedColumns($0, projectID: object.project?.id ?? id) }
+        // 'inbox' is an endpoint alias, not the account's real inbox project ID.
+        // Inbox columns are not imported into local projects, so neither decode
+        // nor validate that unused metadata against the literal alias.
+        let columns: [TickTickColumn]?
+        if id == "inbox" { columns = nil }
+        else {
+            let values = try JSONDecoder().decode(ColumnData.self, from: data).columns
+            columns = try values.map { try checkedColumns($0, projectID: id) }
+        }
         return (object.project, object.tasks, columns)
     }
     public func pull(includeNotes: Bool = false) async throws -> TickTickPull {

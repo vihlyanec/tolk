@@ -184,6 +184,16 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         }
     }
     func add(_ item: Item) { change { $0.items.append(item) }; selectedID = item.id }
+    func createSection(_ name: String, in projectID: UUID) -> String? {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return "Введите название этапа" }
+        guard let project = data.projects.first(where: { $0.id == projectID && !$0.archived }) else { return "Проект недоступен" }
+        guard !project.sections.contains(where: { $0.localizedCaseInsensitiveCompare(name) == .orderedSame }) else { return "Этап с таким названием уже есть" }
+        change { snapshot in
+            if let index = snapshot.projects.firstIndex(where: { $0.id == projectID }) { snapshot.projects[index].sections.append(name) }
+        }
+        return data.projects.first(where: { $0.id == projectID })?.sections.contains(name) == true ? nil : "Не удалось сохранить этап"
+    }
     @discardableResult func capture(_ parsed: ParsedTask, body: String = "", initialDate: Date? = nil) -> UUID? {
         guard !parsed.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         var item = parsed.item(); item.body = body
