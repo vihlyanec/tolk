@@ -45,3 +45,24 @@ private func recurrenceDate(_ day: Int, month: Int = 10, hour: Int = 12) -> Date
     #expect(values.filter { $0.title == "Интервал" }.map(\.schedule.date) == [recurrenceDate(1, month: 11), recurrenceDate(4, month: 11)])
     #expect(values.filter { $0.title == "Будни" }.count == 3)
 }
+
+@Test func earlyCalendarTasksExpandOnlyTheDisplayedPeriod() {
+    var task = Item(title: "Рано"); task.schedule = .timed(recurrenceDate(26, hour: 5))
+    #expect(CalendarLayout.startHour(preferred: 9, days: [recurrenceDate(26)], items: [task], calendar: recurrenceCalendar) == 5)
+    #expect(CalendarLayout.startHour(preferred: 9, days: [recurrenceDate(27)], items: [task], calendar: recurrenceCalendar) == 9)
+    task.deleted = true
+    #expect(CalendarLayout.startHour(preferred: 9, days: [recurrenceDate(26)], items: [task], calendar: recurrenceCalendar) == 9)
+    task.deleted = false; task.schedule = .day(recurrenceDate(26))
+    #expect(CalendarLayout.startHour(preferred: 9, days: [recurrenceDate(26)], items: [task], calendar: recurrenceCalendar) == 9)
+    task.schedule = .timed(recurrenceDate(26, hour: 23)); task.duration = 120
+    #expect(CalendarLayout.startHour(preferred: 9, days: [recurrenceDate(27)], items: [task], calendar: recurrenceCalendar) == 0)
+}
+
+@Test func deletingOneRootOccurrencePreservesFutureProjection() throws {
+    var root = Item(title: "Повтор"); root.recurrence = .daily; root.schedule = .timed(recurrenceDate(26)); root.deleted = true
+    let values = RecurringCalendar.occurrences(items: [root], from: recurrenceDate(26, hour: 0), to: recurrenceDate(29, hour: 0), calendar: recurrenceCalendar)
+    #expect(values.count == 2)
+    #expect(!values.contains { $0.id == root.id })
+    root.recurrenceEndDate = recurrenceDate(27)
+    #expect(RecurringCalendar.occurrences(items: [root], from: recurrenceDate(26, hour: 0), to: recurrenceDate(29, hour: 0), calendar: recurrenceCalendar).isEmpty)
+}

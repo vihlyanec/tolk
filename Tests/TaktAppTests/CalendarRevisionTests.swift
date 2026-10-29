@@ -72,3 +72,58 @@ import TaktCore
     old.attachments = [try UNNotificationAttachment(identifier: "old-logo", url: copy)]
     #expect(!Reminders.isCurrent(UNNotificationRequest(identifier: reminder.identifier, content: old, trigger: nil), for: reminder))
 }
+
+@Test @MainActor func recurringDeletionRequiresChoiceAndCanBeCancelled() throws {
+    let state = AppState(demo: true)
+    let task = try #require(state.data.items.first { $0.schedule.isTimed })
+    state.update(task.id) { $0.recurrence = .daily }
+    let before = state.data
+    state.delete(task.id)
+    #expect(state.pendingRecurringDeletion?.id == task.id)
+    #expect(state.data == before)
+    state.pendingRecurringDeletion = nil
+    #expect(state.data == before)
+    state.delete(task.id); state.confirmRecurringDeletion(following: false)
+    #expect(state.data.items.first { $0.id == task.id }?.deleted == true)
+    #expect(state.calendarItems.contains { $0.recurrenceSourceID == task.id && !$0.deleted })
+    state.undo()
+    #expect(state.data == before)
+}
+
+@Test @MainActor func deletingFutureSeriesKeepsHistoryAndStopsProjectionAndCompletion() throws {
+    let state = AppState(demo: true)
+    var root = Item(title: "Цепочка"); root.recurrence = .daily
+    root.schedule = .timed(state.calendar.startOfDay(for: state.anchor).addingTimeInterval(6 * 3600))
+    state.data.items = [root]
+    let next = try #require(RecurringCalendar.next(root, in: [root], calendar: state.calendar))
+    let later = try #require(RecurringCalendar.next(next, in: [root, next], calendar: state.calendar))
+    state.add(later)
+    let before = state.data
+    state.delete(next.id); state.confirmRecurringDeletion(following: true)
+    #expect(state.data.items.first { $0.id == root.id }?.deleted == false)
+    #expect(state.data.items.first { $0.id == later.id }?.deleted == true)
+    #expect(state.calendarItems.map(\.id) == [root.id])
+    state.complete(root.id)
+    #expect(state.calendarItems.map(\.id) == [root.id])
+    let saved = try JSONDecoder().decode(Snapshot.self, from: JSONEncoder().encode(state.data))
+    #expect(saved.items.first { $0.id == root.id }?.recurrenceEndDate == next.schedule.date)
+    state.undo(); state.undo()
+    #expect(state.data == before)
+    state.delete(root.id); state.confirmRecurringDeletion(following: true)
+    #expect(state.calendarItems.isEmpty)
+    #expect(state.data.items.allSatisfy { $0.deleted })
+}
+
+@Test @MainActor func deletingMovedOccurrenceUsesOriginalSeriesDate() throws {
+    let state = AppState(demo: true)
+    var root = Item(title: "Перенос"); root.recurrence = .daily
+    root.schedule = .day(state.calendar.startOfDay(for: state.anchor))
+    state.data.items = [root]
+    var moved = try #require(RecurringCalendar.next(root, in: [root], calendar: state.calendar))
+    let original = try #require(moved.schedule.date)
+    moved.schedule = .day(state.calendar.date(byAdding: .day, value: -1, to: original)!)
+    state.add(moved)
+    state.delete(moved.id); state.confirmRecurringDeletion(following: true)
+    #expect(state.data.items.first { $0.id == root.id }?.recurrenceEndDate == original)
+    #expect(state.calendarItems.map(\.id) == [root.id])
+}

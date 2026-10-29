@@ -61,6 +61,8 @@ public struct Item: Identifiable, Codable, Equatable, Sendable {
     public var recurrence: Recurrence = .none
     public var repeatEveryDays: Int?
     public var recurrenceSourceID: UUID?
+    /// Exclusive end of a local recurrence series.
+    public var recurrenceEndDate: Date?
     public var recurrenceOriginalDate: Date?
     public var repeatParentID: UUID?
     public var externalRecurrence: Bool?

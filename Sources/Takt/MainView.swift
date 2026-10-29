@@ -28,6 +28,13 @@ struct MainView: View {
         }
         .font(.system(size: 13)).tint(Palette.accent).background(Palette.canvas)
         .preferredColorScheme(state.data.preferences.theme == "dark" ? .dark : state.data.preferences.theme == "light" ? .light : nil)
+        .alert("Удалить повторяющуюся задачу?", isPresented: Binding(get: { state.pendingRecurringDeletion != nil }, set: { if !$0 { state.pendingRecurringDeletion = nil } }), presenting: state.pendingRecurringDeletion) { _ in
+            Button("Удалить только эту задачу", role: .destructive) { state.confirmRecurringDeletion(following: false) }
+            Button("Удалить всю цепочку", role: .destructive) { state.confirmRecurringDeletion(following: true) }
+            Button("Отмена", role: .cancel) { state.pendingRecurringDeletion = nil }
+        } message: { item in
+            Text("«\(item.title)»: можно удалить только этот повтор или его и все последующие. Предыдущие задачи сохранятся.")
+        }
         .sheet(item: $state.sheet) { CreationSheet(state: state, kind: $0) }
         .onChange(of: state.area) { _, area in
             state.calendarEditingID = nil; state.endDrag(); state.search = ""
@@ -290,7 +297,7 @@ struct ItemContextMenu: View {
         if item.deleted { Button("Восстановить") { state.update(item.id) { $0.deleted = false } } }
         else {
             Button("Открыть стикер") { state.showSticky(item.id) }
-            Button("Дублировать") { var copy = item; copy.id = UUID(); copy.recurrenceSourceID = nil; copy.recurrenceOriginalDate = nil; copy.repeatParentID = nil; copy.completed = false; copy.stickyOpen = false; copy.title += " — копия"; state.add(copy) }
+            Button("Дублировать") { var copy = item; copy.id = UUID(); copy.recurrenceSourceID = nil; copy.recurrenceOriginalDate = nil; copy.recurrenceEndDate = nil; copy.repeatParentID = nil; copy.completed = false; copy.stickyOpen = false; copy.title += " — копия"; state.add(copy) }
             if item.kind == .task {
                 Button("Снять время, сохранить дату") { state.unschedule(item.id) }
                 Button("Убрать дату и время") { state.unschedule(item.id, clearDay: true) }

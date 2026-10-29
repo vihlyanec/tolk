@@ -14,6 +14,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
     var scope: Scope = .all
     var selectedID: UUID?
     var calendarEditingID: UUID?
+    var pendingRecurringDeletion: Item?
     var draggingID: UUID?
     var dragOffsetMinutes = 0
     var dragSessionID = UUID()
@@ -247,7 +248,45 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         }
         return true
     }
-    func delete(_ id: UUID) { update(id) { $0.deleted = true; $0.stickyOpen = false }; if selectedID == id { selectedID = nil } }
+    func delete(_ id: UUID) {
+        guard let value = item(id), !value.deleted else { return }
+        if value.kind == .task && value.recurrence != .none {
+            calendarEditingID = nil
+            pendingRecurringDeletion = value
+        } else { deleteConfirmed(value, following: false) }
+    }
+    func confirmRecurringDeletion(following: Bool) {
+        guard let value = pendingRecurringDeletion else { return }
+        pendingRecurringDeletion = nil
+        deleteConfirmed(value, following: following)
+    }
+    private func deleteConfirmed(_ value: Item, following: Bool) {
+        let source = RecurringCalendar.sourceID(for: value, in: data.items)
+        let cutoff = value.recurrenceOriginalDate ?? value.schedule.date
+        change { snapshot in
+            if !snapshot.items.contains(where: { $0.id == value.id }) { snapshot.items.append(value) }
+            let family = Set(snapshot.items.filter { RecurringCalendar.sourceID(for: $0, in: snapshot.items) == source }.map(\.id))
+            for i in snapshot.items.indices {
+                if following && family.contains(snapshot.items[i].id) {
+                    if let cutoff {
+                        snapshot.items[i].recurrenceEndDate = min(snapshot.items[i].recurrenceEndDate ?? cutoff, cutoff)
+                    } else { snapshot.items[i].recurrence = .none }
+                }
+                let date = snapshot.items[i].recurrenceOriginalDate ?? snapshot.items[i].schedule.date
+                if snapshot.items[i].id == value.id || (following && family.contains(snapshot.items[i].id) && (cutoff.map { boundary in date.map { $0 >= boundary } ?? false } ?? true)) {
+                    snapshot.items[i].deleted = true; snapshot.items[i].stickyOpen = false
+                }
+                if (following && family.contains(snapshot.items[i].id)) || snapshot.items[i].id == value.id { snapshot.items[i].modified = Date() }
+            }
+            // Keep the next actionable task in lists when deleting the series' current record.
+            if !following, let next = RecurringCalendar.next(value, in: snapshot.items, calendar: calendar),
+               !snapshot.items.contains(where: { $0.id == next.id || (family.contains($0.id) && ($0.recurrenceOriginalDate ?? $0.schedule.date) == next.recurrenceOriginalDate) }) {
+                snapshot.items.append(next)
+            }
+        }
+        if selectedID == value.id || data.items.contains(where: { $0.id == selectedID && $0.deleted }) { selectedID = nil }
+        calendarEditingID = nil
+    }
     func setTimeZone(_ identifier: String) {
         guard TimeZone(identifier: identifier) != nil else { return }
         let old = calendar, updated = Dates.calendar(zone: identifier)

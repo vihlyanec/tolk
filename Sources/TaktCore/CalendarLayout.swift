@@ -8,6 +8,10 @@ public struct EventPlacement: Identifiable, Sendable {
     public let laneCount: Int
 }
 public enum CalendarLayout {
+    public static func startHour(preferred: Int, days: [Date], items: [Item], calendar: Calendar, external: [ExternalEvent] = []) -> Int {
+        days.flatMap { placements(items: items, day: $0, calendar: calendar, external: external) }
+            .reduce(preferred) { min($0, Int($1.startMinute / 60)) }
+    }
     public static func placements(items: [Item], day: Date, calendar: Calendar, external: [ExternalEvent] = []) -> [EventPlacement] {
         let start = calendar.startOfDay(for: day)
         guard let end = calendar.date(byAdding: .day, value: 1, to: start) else { return [] }

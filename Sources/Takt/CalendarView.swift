@@ -68,8 +68,12 @@ struct CalendarView: View {
     private func advance(_ direction: Int) {
         state.anchor = state.calendar.date(byAdding: state.calendarMode == "Месяц" ? .month : .day, value: direction * (state.calendarMode == "Неделя" ? 7 : 1), to: state.anchor) ?? state.anchor
     }
+    private var timelineStartHour: Int {
+        CalendarLayout.startHour(preferred: state.data.preferences.startHour, days: days, items: state.calendarItems, calendar: state.calendar, external: state.externalEvents)
+    }
     private var timeline: some View {
         GeometryReader { geometry in
+            let startHour = timelineStartHour
             let compact = geometry.size.width < 800
             let timeAxis: CGFloat = compact ? 44 : 54
             let headerHeight: CGFloat = compact ? 60 : 70
@@ -121,16 +125,16 @@ struct CalendarView: View {
                     ScrollView(.vertical) {
                         HStack(alignment: .top, spacing: 0) {
                             VStack(spacing: 0) {
-                                ForEach(state.data.preferences.startHour..<state.data.preferences.endHour, id: \.self) { hour in
+                                ForEach(startHour..<state.data.preferences.endHour, id: \.self) { hour in
                                     Text(String(format: "%02d:00", hour)).font(.system(size: compact ? 10 : 11)).monospacedDigit().foregroundStyle(.secondary)
                                         .frame(width: timeAxis, height: state.data.preferences.hourHeight, alignment: .top).id(hour)
                                 }
                             }
                             ForEach(days, id: \.self) { day in
-                                DayColumn(state: state, day: day).frame(width: dayWidth)
+                                DayColumn(state: state, day: day, startHour: startHour).frame(width: dayWidth)
                             }
                         }.padding(.top, 7)
-                    }.onAppear { reader.scrollTo(max(state.data.preferences.startHour, 8), anchor: .top) }
+                    }.onAppear { reader.scrollTo(startHour, anchor: .top) }
                 }
             }.frame(width: geometry.size.width, height: geometry.size.height)
         }
@@ -151,10 +155,11 @@ struct CalendarView: View {
 struct DayColumn: View {
     @Bindable var state: AppState
     let day: Date
+    let startHour: Int
     @ViewState private var hoverMinute: Int?
     @GestureState private var creationRange: [Double] = []
-    private var startMinute: Double { Double(state.data.preferences.startHour * 60) }
-    private var height: Double { Double(state.data.preferences.endHour - state.data.preferences.startHour) * state.data.preferences.hourHeight }
+    private var startMinute: Double { Double(startHour * 60) }
+    private var height: Double { Double(state.data.preferences.endHour - startHour) * state.data.preferences.hourHeight }
     private var pixels: Double { state.data.preferences.hourHeight / 60 }
     var body: some View {
         GeometryReader { geometry in
@@ -162,7 +167,7 @@ struct DayColumn: View {
                 Rectangle().fill(state.calendar.isDateInToday(day) ? Palette.accent.opacity(0.025) : .clear)
                 Path { path in
                     path.move(to: .zero); path.addLine(to: CGPoint(x: 0, y: height))
-                    for half in 0...((state.data.preferences.endHour - state.data.preferences.startHour) * 2) {
+                    for half in 0...((state.data.preferences.endHour - startHour) * 2) {
                         let y = Double(half) * state.data.preferences.hourHeight / 2
                         path.move(to: CGPoint(x: 0, y: y)); path.addLine(to: CGPoint(x: geometry.size.width, y: y))
                     }
@@ -221,7 +226,7 @@ struct DayColumn: View {
                     }
                 }.allowsHitTesting(false)
             }.frame(height: height).clipped()
-                .onDrop(of: [.text], delegate: CalendarDropDelegate(state: state, day: day, hover: $hoverMinute, minuteAt: snapped))
+                .onDrop(of: [.text], delegate: CalendarDropDelegate(state: state, day: day, startHour: startHour, hover: $hoverMinute, minuteAt: snapped))
                 .onChange(of: state.dragSessionID) { _, _ in hoverMinute = nil }
         }.frame(height: height)
     }
@@ -232,15 +237,16 @@ struct DayColumn: View {
 struct CalendarDropDelegate: DropDelegate {
     let state: AppState
     let day: Date
+    let startHour: Int
     @Binding var hover: Int?
     let minuteAt: (Double) -> Int
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        hover = max(state.data.preferences.startHour * 60, minuteAt(info.location.y) - state.dragOffsetMinutes)
+        hover = max(startHour * 60, minuteAt(info.location.y) - state.dragOffsetMinutes)
         return DropProposal(operation: .move)
     }
     func dropExited(info: DropInfo) { hover = nil }
     func performDrop(info: DropInfo) -> Bool {
-        let minute = max(state.data.preferences.startHour * 60, minuteAt(info.location.y) - state.dragOffsetMinutes)
+        let minute = max(startHour * 60, minuteAt(info.location.y) - state.dragOffsetMinutes)
         hover = nil; state.endDrag()
         guard let provider = info.itemProviders(for: [.text]).first,
               let date = state.calendar.date(bySettingHour: minute / 60, minute: minute % 60, second: 0, of: day) else { return false }
