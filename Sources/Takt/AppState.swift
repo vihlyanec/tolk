@@ -9,6 +9,8 @@ enum Sorting: String, CaseIterable { case manual = "Вручную", date = "В�
 struct TaskGroup: Identifiable { let id: String; var items: [Item] }
 
 @Observable final class AppState {
+    let pomodoro: PomodoroController
+    var pendingFocusTask: Item?
     var data: Snapshot
     var area: Area = .tasks
     var scope: Scope = .all
@@ -57,6 +59,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         let supportURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Takt", isDirectory: true).appendingPathComponent("takt.sqlite")
         dataURL = storageURL ?? (syncTest ? URL(fileURLWithPath: ProcessInfo.processInfo.environment["TOLK_SYNC_TEST_DATA"] ?? "/private/tmp/tolk-sync-isolated/takt.sqlite") : supportURL)
+        pomodoro = PomodoroController(url: demo ? nil : dataURL.deletingLastPathComponent().appendingPathComponent("pomodoro.json"))
         if demo { database = nil; data = Self.demo(); return }
         do {
             let db = try Database(url: dataURL); var snapshot = try db.load()
@@ -67,6 +70,13 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
             data = snapshot; database = db
         }
         catch { data = Snapshot(); database = nil; errorMessage = "Данные не открыты: \(error.localizedDescription). Запись заблокирована. База: \(dataURL.path)" }
+    }
+    func startFocus(_ item: Item) {
+        guard item.kind == .task, !item.deleted, !item.completed else { return }
+        if let current = pomodoro.session {
+            if current.taskID == item.id { pomodoro.presented = true }
+            else { pendingFocusTask = item }
+        } else { pomodoro.start(item) }
     }
     var calendar: Calendar { Dates.calendar(zone: data.preferences.timeZone) }
     var isDemo: Bool { memoryOnly }

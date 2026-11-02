@@ -28,7 +28,10 @@ for takt_variant in "${tolk_variants[@]}"; do
     cp Resources/AppIcon.icns "$takt_bundle/Contents/Resources/TolkAppIcon.icns"
     # ditto preserves the framework's symlinks and original nested signatures.
     ditto --norsrc "$takt_binary_dir/Sparkle.framework" "$takt_bundle/Contents/Frameworks/Sparkle.framework"
-    cp "$tolk_scratch"/artifacts/*/Sparkle/LICENSE "$takt_bundle/Contents/Resources/Sparkle-LICENSE.txt"
+    # SwiftPM can retain both extraction and final artifact directories.
+    # Copy one license rather than passing several source files to a file target.
+    tolk_license_files=("$tolk_scratch"/artifacts/*/Sparkle/LICENSE)
+    cp "${tolk_license_files[1]}" "$takt_bundle/Contents/Resources/Sparkle-LICENSE.txt"
     if [[ "$takt_variant" == "Толк Demo" ]]; then
         /usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier local.takt.demo' "$takt_bundle/Contents/Info.plist"
         /usr/libexec/PlistBuddy -c 'Set :CFBundleName Толк Demo' "$takt_bundle/Contents/Info.plist"

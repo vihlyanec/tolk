@@ -22,6 +22,9 @@ struct ItemInspector: View {
                     else { Image(systemName: "note.text").foregroundStyle(.secondary) }
                     Text(item.kind == .note ? "Заметка" : "Задача").foregroundStyle(.secondary)
                     Spacer()
+                    if item.kind == .task && !item.completed && !item.deleted {
+                        Button { state.startFocus(item) } label: { Label("Фокус", systemImage: "timer") }.help("Начать Помодоро по задаче")
+                    }
                     IconButton(symbol: "pin", help: "Открыть стикер") { state.showSticky(id) }.disabled(item.deleted)
                     IconButton(symbol: "xmark", help: "Закрыть детали") { state.selectedID = nil; state.calendarEditingID = nil }
                 }.padding(.horizontal, 16).padding(.top, 12)

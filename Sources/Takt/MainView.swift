@@ -12,6 +12,8 @@ struct MainView: View {
     @Bindable var state: AppState
     var body: some View {
         VStack(spacing: 0) {
+            PomodoroBar(state: state)
+            Divider()
             if let error = state.errorMessage {
                 HStack { Image(systemName: "exclamationmark.triangle"); Text(error).textSelection(.enabled); Spacer(); IconButton(symbol: "xmark", help: "Скрыть сообщение") { state.errorMessage = nil } }
                     .font(.system(size: 12)).padding(.horizontal, 12).padding(.vertical, 5).background(Color.red.opacity(0.16))
@@ -35,6 +37,11 @@ struct MainView: View {
         } message: { item in
             Text("«\(item.title)»: можно удалить только этот повтор или его и все последующие. Предыдущие задачи сохранятся.")
         }
+        .sheet(isPresented: Binding(get: { state.pomodoro.presented }, set: { state.pomodoro.presented = $0 })) { PomodoroPanel(state: state) }
+        .alert("Переключить задачу фокуса?", isPresented: Binding(get: { state.pendingFocusTask != nil }, set: { if !$0 { state.pendingFocusTask = nil } })) {
+            Button("Начать новый сеанс") { if let item = state.pendingFocusTask { state.pomodoro.start(item) }; state.pendingFocusTask = nil }
+            Button("Отмена", role: .cancel) { state.pendingFocusTask = nil }
+        } message: { Text("Текущий сеанс завершится. Новый начнётся с 25 минут.") }
         .sheet(item: $state.sheet) { CreationSheet(state: state, kind: $0) }
         .onChange(of: state.area) { _, area in
             state.calendarEditingID = nil; state.endDrag(); state.search = ""
@@ -296,6 +303,7 @@ struct ItemContextMenu: View {
     var body: some View {
         if item.deleted { Button("Восстановить") { state.update(item.id) { $0.deleted = false } } }
         else {
+            if item.kind == .task && !item.completed { Button("Начать фокус") { state.startFocus(item) } }
             Button("Открыть стикер") { state.showSticky(item.id) }
             Button("Дублировать") { var copy = item; copy.id = UUID(); copy.recurrenceSourceID = nil; copy.recurrenceOriginalDate = nil; copy.recurrenceEndDate = nil; copy.repeatParentID = nil; copy.completed = false; copy.stickyOpen = false; copy.title += " — копия"; state.add(copy) }
             if item.kind == .task {
