@@ -247,14 +247,23 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
     func unschedule(_ id: UUID, clearDay: Bool = false) {
         update(id) { item in item.schedule = clearDay ? .unscheduled : item.schedule.date.map { .day(calendar.startOfDay(for: $0)) } ?? .unscheduled }
     }
-    @discardableResult func returnToQueue(_ id: UUID) -> Bool {
+    @discardableResult func returnToQueue(_ id: UUID, intoInbox: Bool? = nil, clearDate: Bool? = nil) -> Bool {
         guard let value = item(id), value.kind == .task, !value.deleted, !value.completed else { endDrag(); return false }
-        // Dropping into the undated view explicitly clears both date and clock.
-        unschedule(id, clearDay: queueDateFilter == "Без даты")
+        let inbox = intoInbox ?? queueInboxOnly
+        if inbox {
+            // Inbox is a destination, not just a visibility filter. Move and clear
+            // the schedule atomically so one Undo restores both project and time.
+            update(id) { item in
+                item.projectID = nil; item.section = "Без раздела"; item.schedule = .unscheduled
+            }
+        } else {
+            unschedule(id, clearDay: clearDate ?? (queueDateFilter == "Без даты"))
+        }
         endDrag(); if calendarEditingID == id { calendarEditingID = nil }
-        guard let saved = data.items.first(where: { $0.id == id }), !saved.schedule.isTimed else { return false }
-        if !queue.contains(where: { $0.id == id }) {
-            queueInboxOnly = false; resetQueueFilters()
+        guard let saved = data.items.first(where: { $0.id == id }), !saved.schedule.isTimed,
+              !inbox || (saved.projectID == nil && saved.schedule == .unscheduled) else { return false }
+        if queueInboxOnly == inbox && !queue.contains(where: { $0.id == id }) {
+            resetQueueFilters()
         }
         return true
     }

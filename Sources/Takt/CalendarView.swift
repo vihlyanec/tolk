@@ -410,16 +410,17 @@ struct PlanningQueue: View {
                 if state.queueHasFilters { Button("Сбросить") { state.resetQueueFilters() }.buttonStyle(.plain).foregroundStyle(Palette.accent).font(.system(size: 10)) }
             }
             Divider()
-            if state.queue.isEmpty { EmptyState(symbol: "tray", title: state.queueHasFilters ? "Нет совпадений" : "Всё распределено", detail: state.queueHasFilters ? "Измените или сбросьте фильтры." : "Перетащите сюда задачу из календаря, чтобы снять время. Дата сохранится.") }
+            if state.queue.isEmpty { EmptyState(symbol: "tray", title: state.queueHasFilters ? "Нет совпадений" : "Всё распределено", detail: state.queueHasFilters ? "Измените или сбросьте фильтры." : state.queueInboxOnly ? "Перетащите сюда задачу из календаря: она попадёт во Входящие без даты и времени." : "Перетащите сюда задачу из календаря, чтобы снять время. Дата сохранится.") }
             else { ScrollView { LazyVStack(spacing: 6) { ForEach(state.queue) { item in queueCard(item) } }.padding(.vertical, 2) } }
         }.padding(14).background(Palette.sidebar)
             .onChange(of: state.queueInboxOnly) { _, value in if value { state.queueProjectID = nil } }
             .overlay { RoundedRectangle(cornerRadius: 8).stroke(receivingDrop ? Palette.accent.opacity(0.8) : .clear, style: StrokeStyle(lineWidth: 2, dash: [5])).padding(3).allowsHitTesting(false) }
             .onDrop(of: [.text], isTargeted: $receivingDrop) { providers in
                 guard let provider = providers.first(where: { $0.canLoadObject(ofClass: String.self) }) else { return false }
+                let inbox = state.queueInboxOnly, clearDate = state.queueDateFilter == "Без даты"
                 _ = provider.loadObject(ofClass: String.self) { string, _ in
                     guard let string, let id = UUID(uuidString: string) else { return }
-                    Task { @MainActor in state.returnToQueue(id) }
+                    Task { @MainActor in state.returnToQueue(id, intoInbox: inbox, clearDate: clearDate) }
                 }
                 return true
             }
