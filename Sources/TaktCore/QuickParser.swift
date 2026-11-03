@@ -126,6 +126,21 @@ public enum QuickParser {
             }
             day = d; return true
         }
+        let monthNames = #"(янв(?:арь|аря)?|фев(?:раль|раля)?|мар(?:т|та)?|апр(?:ель|еля)?|май|мая|июн(?:ь|я)?|июл(?:ь|я)?|авг(?:уст|уста)?|сен(?:т(?:ябрь|ября)?)?|окт(?:ябрь|ября)?|ноя(?:брь|бря)?|дек(?:абрь|абря)?)"#
+        consume(#"(?<!\S)(\d{1,2})\s+\#(monthNames)\.?(?:\s+(\d{4}))?(?=\s|$)"#) { values in
+            let name = values[2].lowercased()
+            let stems = ["янв", "фев", "мар", "апр", "ма", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"]
+            guard let index = stems.firstIndex(where: { name.hasPrefix($0) }) else { return false }
+            let year = values[3].isEmpty ? calendar.component(.year, from: now) : (Int(values[3]) ?? 0)
+            let month = index + 1, date = Int(values[1]) ?? 0
+            guard let value = calendar.date(from: DateComponents(year: year, month: month, day: date)),
+                  calendar.component(.year, from: value) == year,
+                  calendar.component(.month, from: value) == month,
+                  calendar.component(.day, from: value) == date else {
+                result.warnings.append("Такой даты не существует"); return false
+            }
+            day = value; return true
+        }
         let weekdays = ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"]
         consume(#"(?<!\S)(?:в\s+)?(понедельник|вторник|среда|среду|четверг|пятница|пятницу|суббота|субботу|воскресенье)(?=\s|$)"#) { values in
             let name = ["среду":"среда", "пятницу":"пятница", "субботу":"суббота"][values[1].lowercased()] ?? values[1].lowercased()
@@ -136,6 +151,11 @@ public enum QuickParser {
         var clock: (Int, Int)?
         consume(#"(?<!\S)(?:в\s+)?([01]?\d|2[0-3]):([0-5]\d)(?=\s|$)"#, kind: .time) { values in
             clock = (Int(values[1]) ?? 0, Int(values[2]) ?? 0); return true
+        }
+        consume(#"(?<!\S)в\s+([01]?\d|2[0-3])(?=\s|$)"#, kind: .time) { values in
+            // A bare number is a clock only after «в», so title numbers stay intact.
+            guard clock == nil else { return false }
+            clock = (Int(values[1]) ?? 0, 0); return true
         }
         if let clock, let start = calendar.date(bySettingHour: clock.0, minute: clock.1, second: 0, of: day ?? now) {
             result.schedule = .timed(start)
