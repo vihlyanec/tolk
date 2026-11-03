@@ -5,12 +5,34 @@ export CLANG_MODULE_CACHE_PATH="${TMPDIR:-/private/tmp}/takt-module-cache"
 export SWIFTPM_MODULECACHE_OVERRIDE="$CLANG_MODULE_CACHE_PATH"
 tolk_scratch=${TOLK_SCRATCH_PATH:-/private/tmp/takt-native}
 tolk_output=${TOLK_OUTPUT_DIR:-$PWD/build}
-tolk_arch=()
-if [[ ${TOLK_UNIVERSAL:-0} == 1 ]]; then tolk_arch=(--arch arm64 --arch x86_64); fi
-swift build --build-system native --disable-sandbox --cache-path "${TMPDIR:-/private/tmp}/takt-spm-cache" --scratch-path "$tolk_scratch" "${tolk_arch[@]}" -c release
-takt_binary_dir=$(swift build --build-system native --disable-sandbox --cache-path "${TMPDIR:-/private/tmp}/takt-spm-cache" --scratch-path "$tolk_scratch" "${tolk_arch[@]}" -c release --show-bin-path)
+# A multi-architecture SwiftPM invocation uses a different build backend, which
+# can label the binary with the deployment target as its SDK (14.0). Build each
+# slice through the same native path as Demo, then merge without rewriting SDKs.
+tolk_sdk=$(xcrun --sdk macosx --show-sdk-path)
+tolk_sdk_version=$(xcrun --sdk "$tolk_sdk" --show-sdk-version)
+tolk_architectures=("$(uname -m)")
+if [[ ${TOLK_UNIVERSAL:-0} == 1 ]]; then tolk_architectures=(arm64 x86_64); fi
 takt_stage_dir=$(mktemp -d /private/tmp/takt-package.XXXXXX)
 trap 'rm -rf "$takt_stage_dir"' EXIT
+tolk_slices=()
+takt_binary_dir=""
+for tolk_architecture in "${tolk_architectures[@]}"; do
+    tolk_build_args=(--build-system native --disable-sandbox --cache-path "${TMPDIR:-/private/tmp}/takt-spm-cache" --scratch-path "$tolk_scratch" --sdk "$tolk_sdk" --arch "$tolk_architecture" -c release)
+    swift build "${tolk_build_args[@]}"
+    tolk_slice_dir=$(swift build "${tolk_build_args[@]}" --show-bin-path)
+    python3 scripts/verify_build_sdk.py "$tolk_slice_dir/Takt" --expected-sdk "$tolk_sdk_version"
+    tolk_slices+=("$tolk_slice_dir/Takt")
+    if [[ -z "$takt_binary_dir" ]]; then takt_binary_dir="$tolk_slice_dir"; fi
+done
+tolk_binary="$takt_stage_dir/Takt"
+if [[ ${TOLK_UNIVERSAL:-0} == 1 ]]; then
+    lipo -create "${tolk_slices[@]}" -output "$tolk_binary"
+else
+    cp "${tolk_slices[1]}" "$tolk_binary"
+fi
+tolk_verify_args=()
+if [[ ${TOLK_UNIVERSAL:-0} == 1 ]]; then tolk_verify_args=(--universal); fi
+python3 scripts/verify_build_sdk.py "$tolk_binary" --expected-sdk "$tolk_sdk_version" "${tolk_verify_args[@]}"
 mkdir -p "$tolk_output"
 tolk_variants=("Толк" "Толк Demo")
 if [[ ${TOLK_RELEASE:-0} == 1 ]]; then tolk_variants=("Толк"); fi
@@ -21,7 +43,7 @@ fi
 for takt_variant in "${tolk_variants[@]}"; do
     takt_bundle="$takt_stage_dir/$takt_variant.app"
     mkdir -p "$takt_bundle/Contents/MacOS" "$takt_bundle/Contents/Resources" "$takt_bundle/Contents/Frameworks"
-    cp "$takt_binary_dir/Takt" "$takt_bundle/Contents/MacOS/Takt"
+    cp "$tolk_binary" "$takt_bundle/Contents/MacOS/Takt"
     cp Resources/Info.plist "$takt_bundle/Contents/Info.plist"
     cp Resources/BrandIcon.png "$takt_bundle/Contents/Resources/BrandIcon.png"
     cp Resources/Completion.wav "$takt_bundle/Contents/Resources/Completion.wav"

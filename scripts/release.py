@@ -17,6 +17,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from configure_bundle import ROOT, read_configuration
 from sign_bundle import identity_for
+from verify_build_sdk import verify_binary
 
 RELEASES = Path(os.environ.get('TOLK_RELEASE_DIR', ROOT / 'build/releases'))
 SPARKLE_NAMESPACE = '{http://www.andymatuschak.org/xml-namespaces/sparkle}'
@@ -107,6 +108,8 @@ def prepare(args):
                    TOLK_BUILD=str(args.build), TOLK_OUTPUT_DIR=str(apps))
         run(['zsh', 'scripts/build.sh'], env=env)
         app = apps / 'Толк.app'
+        sdk_version = output(['xcrun', '--sdk', 'macosx', '--show-sdk-version'])
+        build_versions = verify_binary(app / 'Contents/MacOS/Takt', sdk_version, universal=True)
         archs = output(['lipo', '-archs', app / 'Contents/MacOS/Takt']).split()
         if not {'arm64','x86_64'}.issubset(archs): raise ValueError('Релиз должен поддерживать Apple Silicon и Intel')
         archive = feed / f'Tolk-{args.version}.zip'
@@ -128,7 +131,7 @@ def prepare(args):
         (feed / 'checksums.txt').write_text(''.join(f'{digest}  {name}\n' for name,digest in checksums.items()))
         checksums['checksums.txt'] = hashlib.sha256((feed / 'checksums.txt').read_bytes()).hexdigest()
         (feed / 'manifest.json').write_text(json.dumps(dict(version=args.version, build=args.build, repository=config['repository'],
-            public_key=config['public_key'], application_signing_identity=application_identity, source_commit=commit, source_clean=clean, test_build=args.test_build, sha256=checksums), ensure_ascii=False, indent=2) + '\n')
+            public_key=config['public_key'], application_signing_identity=application_identity, build_versions=build_versions, source_commit=commit, source_clean=clean, test_build=args.test_build, sha256=checksums), ensure_ascii=False, indent=2) + '\n')
         shutil.copytree(feed, folder)
     print(f'Выпуск подготовлен: {folder}')
     if args.test_build: print('Это тестовая сборка. Её загрузка и публикация запрещены.')
