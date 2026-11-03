@@ -19,6 +19,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     private var quickPanel: KeyPanel?
     private var stickies: [UUID: NSPanel] = [:]
     private var statusItem: NSStatusItem?
+    private var statusMenu: NSMenu?
+    private var todayPopover: NSPopover?
     private var keys: HotKeys?
     private let reminders = Reminders()
     private let completionFeedback = CompletionFeedback()
@@ -60,7 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showMain(); return true }
-    func applicationWillTerminate(_ notification: Notification) { state.flushQuickDraft(); state.syncCoordinator?.stop(); keys?.stop(); reminderTimer?.invalidate() }
+    func applicationWillTerminate(_ notification: Notification) { state.flushQuickDraft(); state.syncCoordinator?.stop(); keys?.stop(); reminderTimer?.invalidate(); todayPopover?.close() }
     private func makeMenu() {
         let bar = NSMenu()
         let app = NSMenu(); let appItem = NSMenuItem(); appItem.submenu = app; bar.addItem(appItem)
@@ -86,7 +88,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         add("Новая заметка", to: statusMenu, action: #selector(noteAction))
         statusMenu.addItem(.separator()); add("Настройки…", to: statusMenu, action: #selector(settingsAction))
         statusMenu.addItem(.separator()); add("Завершить Толк", to: statusMenu, action: #selector(quitAction))
-        statusItem?.menu = statusMenu
+        self.statusMenu = statusMenu
+        if let button = statusItem?.button {
+            button.target = self; button.action = #selector(statusItemAction)
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+            button.toolTip = state.isDemo ? "Толк Demo — задачи на сегодня" : "Толк — задачи на сегодня"
+            button.setAccessibilityLabel(state.isDemo ? "Толк Demo: задачи на сегодня" : "Толк: задачи на сегодня")
+            button.setAccessibilityIdentifier("tolk-today-status")
+        }
+    }
+    @objc private func statusItemAction() {
+        guard let button = statusItem?.button else { return }
+        let event = NSApp.currentEvent
+        if event?.type == .rightMouseUp || (event?.type == .leftMouseUp && event?.modifierFlags.contains(.control) == true) {
+            todayPopover?.performClose(nil)
+            statusMenu?.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.minY), in: button)
+            return
+        }
+        if todayPopover?.isShown == true { todayPopover?.performClose(nil); return }
+        if todayPopover == nil {
+            let popover = NSPopover()
+            popover.behavior = .transient
+            popover.contentSize = NSSize(width: 380, height: 560)
+            popover.contentViewController = NSHostingController(rootView: MenuBarTodayView(state: state,
+                openTask: { [weak self] id in
+                    guard let self else { return }
+                    self.todayPopover?.performClose(nil)
+                    self.state.area = .tasks; self.state.scope = .today; self.state.search = ""
+                    self.state.select(id); self.showMain()
+                }, openMain: { [weak self] in
+                    self?.todayPopover?.performClose(nil); self?.showMain()
+                }, openSettings: { [weak self] in
+                    self?.todayPopover?.performClose(nil); self?.openSettings()
+                }, close: { [weak self] in self?.todayPopover?.performClose(nil) }))
+            todayPopover = popover
+        }
+        todayPopover?.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        todayPopover?.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        todayPopover?.contentViewController?.view.window?.makeKey()
     }
     @discardableResult private func add(_ title: String, to menu: NSMenu, action: Selector, key: String = "") -> NSMenuItem {
         let item = menu.addItem(withTitle: title, action: action, keyEquivalent: key); item.target = self; return item
@@ -277,6 +316,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
                 do { try png.write(to: directory.appendingPathComponent(name + ".png")) } catch { FileHandle.standardError.write(Data(error.localizedDescription.utf8)) }
             }
         }
+        render(MenuBarTodayView(state: state, openTask: { _ in }, openMain: {}, openSettings: {}, close: {}), name: "menu-today", width: 380, height: 560)
+        let menuPreviewTheme = state.data.preferences.theme
+        state.change(undo: false) { $0.preferences.theme = "light" }
+        render(MenuBarTodayView(state: state, openTask: { _ in }, openMain: {}, openSettings: {}, close: {}), name: "menu-today-light", width: 380, height: 560, scheme: .light)
+        state.change(undo: false) { $0.preferences.theme = menuPreviewTheme }
         if ProcessInfo.processInfo.arguments.contains("--render-sync") {
             state.syncCoordinator = SyncCoordinator(state: state)
             state.syncCoordinator?.appleVisible = true

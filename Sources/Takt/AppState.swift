@@ -426,6 +426,23 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
             $0.kind == .task && !$0.deleted && matchesQuery($0, search)
         }.filter { item in !data.projects.contains { $0.id == item.projectID && $0.archived } }
     }
+    /// The menu-bar list is independent of the main window's area, search and filters.
+    var menuTodayTasks: [Item] {
+        items(in: .today, searchText: "", activeOnly: true, kind: .task).sorted { a, b in
+            let left = a.schedule.date ?? .distantFuture, right = b.schedule.date ?? .distantFuture
+            if left != right { return left < right }
+            if a.priority != b.priority { return a.priority > b.priority }
+            return a.title.localizedStandardCompare(b.title) == .orderedAscending
+        }
+    }
+    @discardableResult func captureMenuToday(_ title: String) -> UUID? {
+        let text = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        var task = Item(title: text)
+        task.schedule = .day(calendar.startOfDay(for: Date()))
+        change { $0.items.append(task) }
+        return data.items.contains(where: { $0.id == task.id }) ? task.id : nil
+    }
     var visibleItems: [Item] { items(in: scope, searchText: search) }
     func notes(deleted: Bool = false) -> [Item] {
         data.items.filter { item in
@@ -452,7 +469,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
             }
         }
     }
-    private func items(in scope: Scope, searchText: String, activeOnly: Bool = false) -> [Item] {
+    private func items(in scope: Scope, searchText: String, activeOnly: Bool = false, kind: ItemKind? = nil) -> [Item] {
         func matchesSearch(_ item: Item) -> Bool { matchesQuery(item, searchText) }
         return data.items.filter { item in
             if scope == .trash { return item.deleted && matchesSearch(item) }
@@ -461,7 +478,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
             case .tag: break // A tag belongs to notes as well as tasks.
             case .project(let id):
                 guard item.kind == (data.projects.first { $0.id == id }?.kind ?? .task) else { return false }
-            default: guard item.kind == (area == .notes ? .note : .task) else { return false }
+            default: guard item.kind == (kind ?? (area == .notes ? .note : .task)) else { return false }
             }
             if scope == .completed { return item.completed && matchesSearch(item) }
             if item.completed && (activeOnly || !data.preferences.showCompleted) { return false }
