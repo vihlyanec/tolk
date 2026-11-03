@@ -37,3 +37,11 @@ import Testing
         #expect(value.phase == .focus && value.seconds(at: now) == 1500)
     }
 }
+
+@Test func legacyPomodoroWithoutResumeNoteStillDecodes() throws {
+    let value = Pomodoro(taskID: UUID(), title: "Задача")
+    var json = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) as? [String: Any])
+    json.removeValue(forKey: "resumeNote")
+    let restored = try JSONDecoder().decode(Pomodoro.self, from: JSONSerialization.data(withJSONObject: json))
+    #expect(restored.resumeNote == nil && restored.taskID == value.taskID)
+}

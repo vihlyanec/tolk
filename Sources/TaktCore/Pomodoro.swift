@@ -4,6 +4,7 @@ import Foundation
 public struct Pomodoro: Codable, Equatable, Sendable {
     public enum Phase: String, Codable, Sendable { case focus, shortBreak, longBreak }
     public var taskID: UUID
+    public var resumeNote: String?
     public var title: String
     public var phase: Phase = .focus
     public var completed = 0

@@ -35,3 +35,24 @@ import TaktCore
     state.startFocus(completed)
     #expect(state.pomodoro.session?.taskID == first.id)
 }
+
+@Test @MainActor func pausePromptsImmediatelyAndOptionalResumeNoteSurvivesRestart() throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let url = folder.appendingPathComponent("pomodoro.json")
+    let focus = PomodoroController(url: url, notificationsEnabled: false)
+    let now = Date(timeIntervalSince1970: 1000)
+    focus.start(Item(title: "Задача"), now: now)
+    focus.pause(now: now.addingTimeInterval(60))
+    #expect(focus.pausePrompt && focus.session?.deadline == nil)
+    focus.saveResumeNote("  Начать с третьего пункта  ")
+    let restored = PomodoroController(url: url, notificationsEnabled: false)
+    #expect(restored.session?.resumeNote == "Начать с третьего пункта")
+    #expect(restored.session?.seconds(at: now.addingTimeInterval(9000)) == 1440)
+    restored.resume(now: now.addingTimeInterval(9000))
+    restored.pause(now: now.addingTimeInterval(9010))
+    restored.skipResumeNote()
+    #expect(!restored.pausePrompt && restored.session?.deadline == nil)
+    restored.saveResumeNote("")
+    #expect(restored.session?.resumeNote == nil)
+}

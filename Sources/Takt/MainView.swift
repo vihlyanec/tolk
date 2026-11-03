@@ -12,8 +12,7 @@ struct MainView: View {
     @Bindable var state: AppState
     var body: some View {
         VStack(spacing: 0) {
-            PomodoroBar(state: state)
-            Divider()
+            if state.area != .focus && state.pomodoro.session != nil { PomodoroBar(state: state); Divider() }
             if let error = state.errorMessage {
                 HStack { Image(systemName: "exclamationmark.triangle"); Text(error).textSelection(.enabled); Spacer(); IconButton(symbol: "xmark", help: "Скрыть сообщение") { state.errorMessage = nil } }
                     .font(.system(size: 12)).padding(.horizontal, 12).padding(.vertical, 5).background(Color.red.opacity(0.16))
@@ -22,7 +21,8 @@ struct MainView: View {
                 rail
                 if state.sidebarVisible && state.area == .tasks { Sidebar(state: state).frame(width: 252); Divider() }
                 Group {
-                    if state.area == .calendar { CalendarView(state: state) }
+                    if state.area == .focus { PomodoroWorkspace(state: state) }
+                    else if state.area == .calendar { CalendarView(state: state) }
                     else if state.area == .notes { NotesWorkspace(state: state) }
                     else { TaskListView(state: state) }
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -37,9 +37,9 @@ struct MainView: View {
         } message: { item in
             Text("«\(item.title)»: можно удалить только этот повтор или его и все последующие. Предыдущие задачи сохранятся.")
         }
-        .sheet(isPresented: Binding(get: { state.pomodoro.presented }, set: { state.pomodoro.presented = $0 })) { PomodoroPanel(state: state) }
+        .sheet(isPresented: Binding(get: { state.pomodoro.pausePrompt }, set: { state.pomodoro.pausePrompt = $0 })) { PomodoroPauseNote(state: state) }
         .alert("Переключить задачу фокуса?", isPresented: Binding(get: { state.pendingFocusTask != nil }, set: { if !$0 { state.pendingFocusTask = nil } })) {
-            Button("Начать новый сеанс") { if let item = state.pendingFocusTask { state.pomodoro.start(item) }; state.pendingFocusTask = nil }
+            Button("Начать новый сеанс") { if let item = state.pendingFocusTask { state.pomodoro.start(item); state.area = .focus }; state.pendingFocusTask = nil }
             Button("Отмена", role: .cancel) { state.pendingFocusTask = nil }
         } message: { Text("Текущий сеанс завершится. Новый начнётся с 25 минут.") }
         .sheet(item: $state.sheet) { CreationSheet(state: state, kind: $0) }
@@ -52,14 +52,14 @@ struct MainView: View {
         VStack(spacing: 16) {
             BrandMark().frame(width: 36, height: 36).padding(.top, 12).padding(.bottom, 10)
             ForEach(Area.allCases, id: \.self) { area in
-                let symbol = area == .tasks ? "checklist" : area == .calendar ? "calendar" : "square.and.pencil"
-                let title = area == .tasks ? "Задачи" : area == .calendar ? "Календарь" : "Заметки"
+                let symbol = area == .tasks ? "checklist" : area == .calendar ? "calendar" : area == .focus ? "timer" : "square.and.pencil"
+                let title = area == .tasks ? "Задачи" : area == .calendar ? "Календарь" : area == .focus ? "Помодоро" : "Заметки"
                 IconButton(symbol: symbol, help: title, tint: state.area == area ? Palette.accent : .secondary) {
                     state.area = area; state.scope = .all; state.selectedID = nil
                 }.frame(width: 38, height: 38).background(state.area == area ? Palette.accent.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 8))
             }
             Spacer()
-            if state.area != .calendar { IconButton(symbol: "sidebar.left", help: state.area == .notes ? "Показать/скрыть заметки" : "Показать/скрыть проекты") { state.sidebarVisible.toggle() } }
+            if state.area != .calendar && state.area != .focus { IconButton(symbol: "sidebar.left", help: state.area == .notes ? "Показать/скрыть заметки" : "Показать/скрыть проекты") { state.sidebarVisible.toggle() } }
             IconButton(symbol: "gearshape", help: "Настройки") { state.showSettings() }.padding(.bottom, 16)
         }.frame(width: 52).background(Color.primary.opacity(0.025)).overlay(alignment: .trailing) { Rectangle().fill(Palette.line).frame(width: 1) }
     }

@@ -2,7 +2,7 @@ import Foundation
 import Observation
 import TaktCore
 
-enum Area: String, CaseIterable { case tasks, calendar, notes }
+enum Area: String, CaseIterable { case tasks, calendar, notes, focus }
 enum Scope: Hashable { case all, inbox, today, week, completed, trash, project(UUID), tag(UUID) }
 enum Grouping: String, CaseIterable { case date = "Дата", project = "Проект", section = "Раздел", priority = "Приоритет", tag = "Тег", none = "Без группировки" }
 enum Sorting: String, CaseIterable { case manual = "Вручную", date = "Время", priority = "Приоритет", title = "Название", duration = "Длительность" }
@@ -74,9 +74,9 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
     func startFocus(_ item: Item) {
         guard item.kind == .task, !item.deleted, !item.completed else { return }
         if let current = pomodoro.session {
-            if current.taskID == item.id { pomodoro.presented = true }
+            if current.taskID == item.id { area = .focus }
             else { pendingFocusTask = item }
-        } else { pomodoro.start(item) }
+        } else { pomodoro.start(item); area = .focus }
     }
     var calendar: Calendar { Dates.calendar(zone: data.preferences.timeZone) }
     var isDemo: Bool { memoryOnly }

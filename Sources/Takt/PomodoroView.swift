@@ -5,7 +5,8 @@ import TaktCore
 
 @Observable final class PomodoroController {
     private(set) var session: Pomodoro?
-    var presented = false
+    var pausePrompt = false
+    var pauseDraft = ""
     var error: String?
     private let url: URL?
     private let notificationsEnabled: Bool
@@ -18,12 +19,23 @@ import TaktCore
         }
     }
     func start(_ item: Item, now: Date = Date()) {
-        session = Pomodoro(taskID: item.id, title: item.title, now: now); presented = true; save()
+        session = Pomodoro(taskID: item.id, title: item.title, now: now); pausePrompt = false; save()
     }
-    func pause(now: Date = Date()) { session?.pause(at: now); save() }
-    func resume(now: Date = Date()) { session?.resume(at: now); save() }
+    func pause(now: Date = Date()) {
+        guard let current = session, current.deadline != nil, current.seconds(at: now) > 0 else { return }
+        session?.pause(at: now); save()
+        pauseDraft = current.resumeNote ?? ""; pausePrompt = true
+    }
+    func saveResumeNote(_ text: String) {
+        let value = String(text.prefix(2000)).trimmingCharacters(in: .whitespacesAndNewlines)
+        session?.resumeNote = value.isEmpty ? nil : value
+        save(); pausePrompt = false
+    }
+    func skipResumeNote() { pausePrompt = false }
+
+    func resume(now: Date = Date()) { pausePrompt = false; session?.resume(at: now); save() }
     func next(now: Date = Date()) { session?.next(at: now); save() }
-    func stop() { session = nil; save() }
+    func stop() { session = nil; pausePrompt = false; save() }
     private func save() {
         do {
             if let url {
@@ -58,41 +70,79 @@ import TaktCore
     }
 }
 
-struct PomodoroPanel: View {
+struct PomodoroPauseNote: View {
+    let state: AppState
+    var body: some View {
+        @Bindable var focus = state.pomodoro
+        VStack(alignment: .leading, spacing: 16) {
+            Text("С чего продолжить?").font(.title2.bold())
+            Text("Таймер на паузе. Оставьте себе следующий шаг — или пропустите.").foregroundStyle(.secondary)
+            TextField("Например, начать с третьего пункта", text: $focus.pauseDraft, axis: .vertical)
+                .lineLimit(4...8).textFieldStyle(.roundedBorder).accessibilityLabel("С чего продолжить, необязательно")
+            HStack { Button("Пропустить") { focus.skipResumeNote() }.keyboardShortcut(.cancelAction); Spacer()
+                Button("Сохранить") { focus.saveResumeNote(focus.pauseDraft) }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+            }
+        }.padding(24).frame(width: 430)
+    }
+}
+
+struct PomodoroWorkspace: View {
     @Bindable var state: AppState
     private var focus: PomodoroController { state.pomodoro }
     var body: some View {
-        VStack(spacing: 20) {
-            HStack { Text("Помодоро").font(.title2.bold()); Spacer(); Button("Закрыть") { focus.presented = false } }
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                if let session = focus.session {
-                    let seconds = session.seconds(at: context.date)
-                    Text(session.phase == .focus ? "Фокус" : session.phase == .longBreak ? "Длинный перерыв" : "Перерыв").foregroundStyle(.secondary)
-                    Text(state.item(session.taskID)?.title ?? session.title).font(.headline).multilineTextAlignment(.center).lineLimit(3)
-                    Text(String(format: "%02d:%02d", seconds / 60, seconds % 60))
-                        .font(.system(size: 64, weight: .medium, design: .rounded)).monospacedDigit().accessibilityLabel("Осталось \(seconds / 60) минут \(seconds % 60) секунд")
-                    Text("Завершено подходов: \(session.completed)").foregroundStyle(.secondary)
-                    HStack {
-                        if seconds == 0 {
-                            Button(session.phase == .focus ? "Начать перерыв" : "Начать фокус") { focus.next() }.buttonStyle(.borderedProminent)
-                        } else if session.deadline == nil {
-                            Button("Продолжить") { focus.resume() }.buttonStyle(.borderedProminent)
-                        } else {
-                            Button("Пауза") { focus.pause() }.buttonStyle(.borderedProminent)
-                        }
-                        Button("Завершить сеанс") { focus.stop() }
+        GeometryReader { geometry in
+            HStack(spacing: 0) {
+                ScrollView { VStack(spacing: 0) {
+                    HStack { Text("Помодоро").font(.system(size: 24, weight: .bold)); Spacer()
+                        Menu { taskChoices } label: { Label(focus.session == nil ? "Выбрать задачу" : "Сменить задачу", systemImage: "plus") }.fixedSize()
+                    }.padding(24)
+                    Spacer(minLength: 12)
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        let session = focus.session
+                        let seconds = session?.seconds(at: context.date) ?? 1500
+                        VStack(spacing: 24) {
+                            Text(session.map { $0.phase == .focus ? "Фокус" : $0.phase == .longBreak ? "Длинный перерыв" : "Перерыв" } ?? "Фокус").foregroundStyle(.secondary)
+                            Text(session.flatMap { state.item($0.taskID)?.title ?? $0.title } ?? "Выберите задачу для фокуса").font(.title3.weight(.medium)).multilineTextAlignment(.center).lineLimit(3)
+                            ZStack {
+                                Circle().stroke(Palette.line, lineWidth: 4)
+                                Text(String(format: "%02d:%02d", seconds / 60, seconds % 60)).font(.system(size: 60, weight: .regular)).monospacedDigit()
+                            }.frame(width: 250, height: 250).accessibilityElement(children: .combine)
+                            if let session {
+                                HStack {
+                                    if seconds == 0 { Button(session.phase == .focus ? "Начать перерыв" : "Начать фокус") { focus.next() }.buttonStyle(.borderedProminent) }
+                                    else if session.deadline == nil { Button("Продолжить") { focus.resume() }.buttonStyle(.borderedProminent) }
+                                    else { Button("Пауза") { focus.pause() }.buttonStyle(.borderedProminent) }
+                                    Button("Завершить сеанс") { focus.stop() }
+                                }.controlSize(.large)
+                            } else { Menu("Начать") { taskChoices }.menuStyle(.borderlessButton).fixedSize().padding(12).background(Palette.accent.opacity(0.15), in: Capsule()) }
+                        }.padding(.horizontal, 24)
                     }
-                } else {
-                    Image(systemName: "timer").font(.system(size: 36)).foregroundStyle(Palette.accent)
-                    Text("Выберите задачу для фокуса").font(.headline)
-                    Text("25 минут работы · 5 минут отдыха\nПосле четырёх подходов — 15 минут отдыха").foregroundStyle(.secondary).multilineTextAlignment(.center)
-                    if let item = state.selected, item.kind == .task, !item.deleted, !item.completed {
-                        Button("Начать фокус по выбранной задаче") { state.startFocus(item) }.buttonStyle(.borderedProminent)
-                    } else { Text("Откройте задачу и нажмите «Начать фокус».").foregroundStyle(.secondary) }
-                }
+                    Spacer(minLength: 20)
+                    if geometry.size.width < 800 { overview.padding(24) }
+                    Text("25 минут фокуса · 5 минут отдыха · 15 после четырёх подходов").font(.caption).foregroundStyle(.secondary).padding(20)
+                    if let error = focus.error { Text(error).foregroundStyle(.red).font(.caption).padding() }
+                }.frame(maxWidth: .infinity, minHeight: geometry.size.height) }
+                if geometry.size.width >= 800 { Divider(); ScrollView { overview.padding(28) }.frame(width: min(380, geometry.size.width * 0.4)).background(Palette.sidebar) }
             }
-            if let error = focus.error { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
-        }.padding(24).frame(width: 420).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+    @ViewBuilder private var taskChoices: some View {
+        let tasks = state.data.items.filter { $0.kind == .task && !$0.deleted && !$0.completed }
+        if tasks.isEmpty { Text("Сначала добавьте задачу") }
+        ForEach(tasks) { item in Button(item.title) { state.startFocus(item) } }
+    }
+    private var overview: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            Text("Обзор сеанса").font(.title2.bold())
+            HStack { Text("Завершено подходов"); Spacer(); Text("\(focus.session?.completed ?? 0)").font(.title2).monospacedDigit() }
+            Divider()
+            Text("С чего продолжить").font(.title3.bold())
+            if let note = focus.session?.resumeNote, !note.isEmpty { Text(note).textSelection(.enabled).fixedSize(horizontal: false, vertical: true) }
+            else { Text("При паузе можно записать следующий шаг. Это необязательно.").foregroundStyle(.secondary) }
+            if let session = focus.session, session.deadline == nil {
+                Button("Изменить заметку") { focus.pauseDraft = session.resumeNote ?? ""; focus.pausePrompt = true }
+            }
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -101,7 +151,7 @@ struct PomodoroBar: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             HStack {
-                Button { state.pomodoro.presented = true } label: {
+                Button { state.area = .focus } label: {
                     Label("Помодоро", systemImage: "timer")
                 }.buttonStyle(.plain)
                 if let session = state.pomodoro.session {
@@ -110,7 +160,7 @@ struct PomodoroBar: View {
                     Text(String(format: "%02d:%02d", seconds / 60, seconds % 60)).monospacedDigit().fontWeight(.semibold)
                     Text(state.item(session.taskID)?.title ?? session.title).lineLimit(1).foregroundStyle(.secondary)
                     Spacer()
-                    if seconds == 0 { Button("Открыть таймер") { state.pomodoro.presented = true } }
+                    if seconds == 0 { Button("Открыть таймер") { state.area = .focus } }
                     else if session.deadline == nil { Button("Продолжить") { state.pomodoro.resume() } }
                     else { Button("Пауза") { state.pomodoro.pause() } }
                 } else { Spacer(); Text("25 минут на одну задачу").foregroundStyle(.secondary) }
