@@ -79,3 +79,18 @@ import TaktCore
     try second.acceptSharedSession("")
     #expect(second.session == nil && notifications == 0)
 }
+
+@Test @MainActor func enablingAccountFocusImportsExistingLocalTimerOnce() throws {
+    let state = AppState(demo:true)
+    let task = Item(title:"Существующий локальный сеанс")
+    let now = Date(timeIntervalSince1970:1794477600)
+    state.pomodoro.start(task,now:now)
+    state.pomodoro.pause(now:now.addingTimeInterval(60))
+    state.pomodoro.saveResumeNote("Продолжить черновик")
+    state.configureAccountFocus()
+    #expect(state.data.preferences.focusSession == state.pomodoro.sharedSession)
+    #expect(state.pomodoro.session?.resumeNote == "Продолжить черновик")
+    let first = state.data.preferences.focusSession
+    state.configureAccountFocus()
+    #expect(state.data.preferences.focusSession == first)
+}

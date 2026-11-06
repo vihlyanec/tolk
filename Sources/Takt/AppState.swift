@@ -74,6 +74,10 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         catch { data = Snapshot(); database = nil; errorMessage = "Данные не открыты: \(error.localizedDescription). Запись заблокирована. База: \(dataURL.path)" }
     }
     func configureAccountFocus() {
+        if data.preferences.focusSession == nil, pomodoro.session != nil {
+            let existing = pomodoro.sharedSession
+            change(undo:false) { $0.preferences.focusSession = existing }
+        }
         pomodoro.didChange = { [weak self] value in
             guard let self else { return }
             self.appliedAccountFocus = value

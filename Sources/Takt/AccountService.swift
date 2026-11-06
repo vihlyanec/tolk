@@ -13,7 +13,7 @@ private enum AccountKeychain {
     static func read(_ id: UUID, origin: String, accountID: String) throws -> String {
         var q = query(id); q[kSecReturnData as String] = true; q[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
-        guard SecItemCopyMatching(q as CFDictionary,&result) == errSecSuccess, let data = result as? Data, let saved = (try? JSONSerialization.jsonObject(with:data)) as? [String:String], saved["origin"] == origin, saved["accountID"] == accountID.lowercased(), let token = saved["token"] else { throw TaktError.storage("Подключите аккаунт заново: доступ не найден в Связке ключей") }
+        guard SecItemCopyMatching(q as CFDictionary,&result) == errSecSuccess, let data = result as? Data, let saved = (try? JSONSerialization.jsonObject(with:data)) as? [String:String], saved["origin"] == origin, saved["accountID"] == accountID.lowercased(), let token = saved["token"] else { throw AccountAccessError.auth }
         return token
     }
     static func remove(_ id: UUID) { SecItemDelete(query(id) as CFDictionary) }
@@ -171,6 +171,7 @@ private struct AccountAPI {
         guard let connection = state?.data.accountSync, connection.pending.isEmpty, connection.conflicts.isEmpty, !busy else { status = "Сначала отправьте изменения и выберите версии конфликтов"; return }
         task?.cancel(); generation = UUID()
         state?.change(undo:false) { $0.accountSync = nil }
+        guard state?.data.accountSync == nil else { return }
         AccountKeychain.remove(connection.connectionID)
         status = "Отключено. Данные оставлены на Mac. Доступ устройства можно отозвать в веб-настройках."
     }
