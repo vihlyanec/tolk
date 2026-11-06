@@ -42,7 +42,8 @@ import TaktCore
         let value: [String: SyncJSON] = ["taskID":.string(session.taskID.uuidString.lowercased()),"title":.string(session.title),
             "phase":.string(session.phase.rawValue),"completed":.number(Double(session.completed)),"remaining":.number(session.remaining),
             "deadline":session.deadline.map { .number($0.timeIntervalSince1970 * 1000) } ?? .null,"resumeNote":.string(session.resumeNote ?? "")]
-        return (try? String(data:JSONEncoder().encode(value),encoding:.utf8)) ?? ""
+        let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+        return (try? String(data:encoder.encode(value),encoding:.utf8)) ?? ""
     }
     func acceptSharedSession(_ encoded: String) throws {
         guard !encoded.isEmpty else { session = nil; pausePrompt = false; save(notify:false); return }
