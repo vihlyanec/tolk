@@ -7,4 +7,4 @@ COPY public /app/public
 RUN mkdir /data && chown tolk:tolk /data
 USER tolk
 WORKDIR /app/server
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "1", "--threads", "4", "--timeout", "30", "--access-logfile", "/dev/null", "--error-logfile", "-", "wsgi:production_app()"]
+CMD ["gunicorn", "--no-control-socket", "--bind", "0.0.0.0:8000", "--workers", "1", "--threads", "4", "--timeout", "30", "--access-logfile", "/dev/null", "--error-logfile", "-", "wsgi:production_app()"]

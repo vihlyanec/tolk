@@ -1,7 +1,14 @@
 services:
   web:
     build: .
+    command: ["gunicorn", "--no-control-socket", "--bind", "0.0.0.0:8000", "--workers", "1", "--threads", "4", "--timeout", "30", "--access-logfile", "/dev/null", "--error-logfile", "-", "wsgi:production_app()"]
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,urllib.request,urllib.parse; origin=os.environ['TOLK_ORIGIN']; req=urllib.request.Request('http://127.0.0.1:8000/api/session',headers={'Host':urllib.parse.urlparse(origin).netloc}); urllib.request.urlopen(req,timeout=4).read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     ports:
       - "127.0.0.1:18787:8000"
     environment:
@@ -31,6 +38,9 @@ services:
 
   push:
     build: .
+    depends_on:
+      web:
+        condition: service_healthy
     command: ["python", "push.py"]
     restart: unless-stopped
     environment:

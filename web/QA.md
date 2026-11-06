@@ -89,8 +89,14 @@ Online backup создан реально; серверная база quick_che
 
 ## Общий аккаунт · 6 ноября 2026
 
-148 Swift tests, 32 Python server tests, 18 JS tests и 14 release-script tests прошли на синтетических данных. Swift тест отправляет полные нативные записи через настоящий Python Store во временной SQLite и принимает web-изменение и детерминированный следующий повтор обратно. Проверены queue persistence/retry, first epoch bootstrap, ACK binding, независимые правки, явные конфликты, restore freeze, revoke/pairing/account scope, атомарное удаление ссылок, DST и absolute instants, общий focus deadline/пауза/заметка без echo.
+149 Swift tests, 32 Python server tests, 18 JS tests и 14 release-script tests прошли на синтетических данных. Swift тест отправляет полные нативные записи через настоящий Python Store во временной SQLite и принимает web-изменение и детерминированный следующий повтор обратно. Проверены queue persistence/retry, first epoch bootstrap, ACK binding, независимые правки, явные конфликты, restore freeze, revoke/pairing/account scope, атомарное удаление ссылок, DST и absolute instants, общий focus deadline/пауза/заметка без echo.
 
 CUA: временный аккаунт Demo, localhost8790, создание и редактирование задачи с датой12дек10:00, описанием/меткой/чек-листом, pause note и восстановление после reload. Снимки desktop390px/themes/editor/calendar/focus. Визуальный authority — renderer установленного1.0.13 на данных в памяти. Проверка контраста нашла mediumorange в light; исправлено token986000, darkffad32 сохранён. Веб-дизайн документирован заново.
 
 Личный Mac ещё не подключён к аккаунту; его данные не использовались для тестов. Физический iPhone, клавиатура Safari и доставка Web Push не проверены. Production deployment и новый native draft фиксируются отдельно после фактического завершения.
+
+Production 6 ноября: веб и worker напоминаний установлены. Все 19 server/public файлов и 13 публичных HTTPS-ресурсов совпали по SHA-256. Device sync и push/key без авторизации возвращают 401, чужой Origin — 403. SQLite quick_check успешен, новые таблицы созданы; права VAPID — 600/10001, публичный ключ — 87 символов, API отправителя совместим.
+
+При первом запуске обнаружена гонка инициализации Store. Добавлены web healthcheck и зависимость push от здорового web; служебный сокет Gunicorn отключён в read-only контейнере. После исправления web healthy, push running, свежие журналы запуска без ошибок.
+
+Native 1.1.0/build38 — подписанный Draft436632082. CI42237798708 прошёл на точном d2580b2, пакет не опубликован и не установлен. Личное объединение требует пользовательского подключения Mac после обновления.
