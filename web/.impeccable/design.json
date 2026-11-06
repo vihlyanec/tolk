@@ -380,7 +380,7 @@
       "refersTo": "priority-medium",
       "description": "Контрастный текст зависит от темы; янтарная подложка обозначает семантику.",
       "html": "<span class=\"ds-priority\"><svg width=\"10\" height=\"10\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M5 21V3h14l-3 5 3 5H5\"/></svg>Средний</span>",
-      "css": ".ds-priority{display:inline-flex;align-items:center;gap:3px;font:11px -apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;border-radius:12px;padding:3px 7px;color:var(--priority-medium,#986000);background:color-mix(in srgb,var(--priority-medium,#986000) 12%,transparent)}"
+      "css": ".ds-priority{display:inline-flex;align-items:center;gap:3px;font:11px -apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;border-radius:12px;padding:3px 7px;color:var(--priority-medium,#986000);background:color-mix(in srgb,var(--priority-medium,#986000) 10%,transparent)}"
     },
     {
       "name": "Карточка очереди",
