@@ -8,6 +8,7 @@ import TaktCore
     var pausePrompt = false
     var pauseDraft = ""
     var error: String?
+    @ObservationIgnored var didChange: (String) -> Void = { _ in }
     private let url: URL?
     private let notificationsEnabled: Bool
     @ObservationIgnored private var notificationTask: Task<Void, Never>?
@@ -36,7 +37,26 @@ import TaktCore
     func resume(now: Date = Date()) { pausePrompt = false; session?.resume(at: now); save() }
     func next(now: Date = Date()) { session?.next(at: now); save() }
     func stop() { session = nil; pausePrompt = false; save() }
-    private func save() {
+    var sharedSession: String {
+        guard let session else { return "" }
+        let value: [String: SyncJSON] = ["taskID":.string(session.taskID.uuidString.lowercased()),"title":.string(session.title),
+            "phase":.string(session.phase.rawValue),"completed":.number(Double(session.completed)),"remaining":.number(session.remaining),
+            "deadline":session.deadline.map { .number($0.timeIntervalSince1970 * 1000) } ?? .null,"resumeNote":.string(session.resumeNote ?? "")]
+        return (try? String(data:JSONEncoder().encode(value),encoding:.utf8)) ?? ""
+    }
+    func acceptSharedSession(_ encoded: String) throws {
+        guard !encoded.isEmpty else { session = nil; pausePrompt = false; save(notify:false); return }
+        let fields = try JSONDecoder().decode(SyncFields.self,from:Data(encoded.utf8))
+        guard let id = fields["taskID"]?.string.flatMap(UUID.init(uuidString:)), let title = fields["title"]?.string,
+              let phase = fields["phase"]?.string.flatMap(Pomodoro.Phase.init(rawValue:)),
+              let completed = fields["completed"]?.int, completed >= 0,
+              case .number(let remaining) = fields["remaining"], remaining.isFinite, (0...1500).contains(remaining) else { throw TaktError.invalid("Не удалось прочитать сеанс аккаунта") }
+        var value = Pomodoro(taskID:id,title:title); value.phase = phase; value.completed = completed; value.remaining = remaining
+        if case .number(let deadline) = fields["deadline"], deadline.isFinite { value.deadline = Date(timeIntervalSince1970:deadline/1000) } else { value.deadline = nil }
+        value.resumeNote = fields["resumeNote"]?.string
+        session = value; pausePrompt = false; save(notify:false)
+    }
+    private func save(notify: Bool = true) {
         do {
             if let url {
                 try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -45,6 +65,7 @@ import TaktCore
             }
             error = nil
         } catch { self.error = "Таймер работает, но не сохранён: \(error.localizedDescription)" }
+        if notify { didChange(sharedSession) }
         // Demo and unit tests never request permission or schedule system notifications.
         guard url != nil, notificationsEnabled else { return }
         let previous = notificationTask

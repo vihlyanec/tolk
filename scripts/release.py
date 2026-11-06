@@ -21,7 +21,7 @@ from verify_build_sdk import verify_binary
 
 RELEASES = Path(os.environ.get('TOLK_RELEASE_DIR', ROOT / 'build/releases'))
 SPARKLE_NAMESPACE = '{http://www.andymatuschak.org/xml-namespaces/sparkle}'
-PUBLISH_PATHS = ['Sources','Tests','Resources','scripts','.github','Release','Package.swift','README.md','DISTRIBUTION.md','THIRD_PARTY_NOTICES.md','.gitignore']
+PUBLISH_PATHS = ['Sources','Tests','Resources','scripts','.github','Release','web','Package.swift','README.md','DISTRIBUTION.md','THIRD_PARTY_NOTICES.md','.gitignore']
 
 def run(args, **kwargs):
     return subprocess.run([str(a) for a in args], cwd=ROOT, check=True, **kwargs)

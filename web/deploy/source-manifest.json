@@ -1,0 +1,29 @@
+{
+  "date": "2026-11-03",
+  "url": "https://tolk.103-102-229-153.sslip.io",
+  "tests": {
+    "python": 24,
+    "javascript": 11
+  },
+  "sha256": {
+    "server/store.py": "eed68099a91357afa1e18098a412b36df9424d43c60dc0270aafa49c1eb4c289",
+    "server/backup.py": "470e71b0ceffd9fe43fd0b823a6c5249da872a176a4c19eeb5d79656f782d4b9",
+    "server/main.py": "3244739934664a4048a53d62a82b212604a841b697c1592c1b9f626c5d149034",
+    "server/wsgi.py": "802fb49bb4c815a60e898df228c6b18568d4a1cfc9e4af9bde3aca40a2f59649",
+    "public/index.html": "0f739afc231ba9a9abe8ae87c46d6774262fc483f8ea89770b36cf86f774183b",
+    "public/icon-192.png": "04f185ca414f5ef27cbecfa457af82463b3e24307be9087322f68768e6877733",
+    "public/sync.js": "44c57169b8ea60cf2099933d812a5906f003b524f0cd9f99a87bafa272764078",
+    "public/icon.svg": "4ee79f8ce6fa771fc214b2532dfd372d688592dea7886561812c0c06591e7997",
+    "public/style.css": "0c6414da36f52747bf39edbcdb7640d34a2aa3ba07a77dbf616fb4769e3daf53",
+    "public/manifest.webmanifest": "fd8ff3c9db3f15e16199a3c7fe13e23b065633347cb7ad83e026e7a5160affe3",
+    "public/app.js": "1ddbbee17f538a48f54b335e2b4b299e34b258d5a9d376b3f54c4192044cdfe1",
+    "public/sw.js": "da74bfa0cbc86a5b45274edc6ad299671e9383df1439e2b20b9461630f5d6656",
+    "public/icon-512.png": "ea08ff30b8f4dabafd4d65667978018eba0bdc16002554edafa39c6e1ae10e51",
+    "Dockerfile": "c818413c6010db81a171de01b35408a43d1430a8ee2c3c73a43cce02216062e1",
+    "compose.yaml": "658d398d2f22710c010180e1fbf1f82fde5f9c556e69bf62f8063dd129a321f3",
+    ".dockerignore": "6d474fa6b34270912c6835a2447de7063017ffd9df95b941b864449e2c2a1e01",
+    "public/pomodoro.js": "6f533ba35cddc7413d10c31cd79d5c2271538a4da862d2ff3262244ebca8b7cf"
+  },
+  "ui": "user-reference-orange-2026-11-02",
+  "feature": "pomodoro-section-and-continuation-note-2026-11-03"
+}

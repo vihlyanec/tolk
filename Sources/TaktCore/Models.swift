@@ -82,6 +82,7 @@ public struct Item: Identifiable, Codable, Equatable, Sendable {
     public var end: Date? { schedule.isTimed ? schedule.date?.addingTimeInterval(Double(duration) * 60) : nil }
 }
 public struct Preferences: Codable, Equatable, Sendable {
+    public var focusSession: String?
     public var theme = "dark"
     public var timeZone = "Europe/Moscow"
     public var startHour = 7
@@ -103,6 +104,7 @@ public struct Preferences: Codable, Equatable, Sendable {
     public init() {}
 }
 public struct Snapshot: Codable, Equatable, Sendable {
+    public var accountSync: AccountSyncState?
     public var tickTick: TickTickSyncState?
     public var appleCalendar: AppleCalendarState?
     public var version = 1
@@ -135,6 +137,13 @@ public struct Snapshot: Codable, Equatable, Sendable {
                 }
                 seen.insert(id); parent = next.parentID
             }
+        }
+        if let account = accountSync {
+            guard UUID(uuidString:account.accountID) != nil, let origin = URL(string:account.origin), origin.scheme == "https",
+                  origin.host != nil, origin.user == nil, origin.password == nil, origin.query == nil, origin.fragment == nil,
+                  origin.path.isEmpty || origin.path == "/", account.cursor >= 0,
+                  account.records.allSatisfy({ $0.key == $0.value.key && $0.value.version >= 0 }),
+                  account.pending.allSatisfy({ UUID(uuidString:$0.id) != nil && UUID(uuidString:$0.entityID) != nil && $0.base >= 0 && ["task","project","tag","settings","event"].contains($0.kind) }) else { throw TaktError.invalid("Повреждено подключение аккаунта") }
         }
         if let sync = tickTick {
             guard [3, 5].contains(sync.options.intervalMinutes),

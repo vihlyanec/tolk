@@ -41,13 +41,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         if !state.isDemo { state.appUpdater = AppUpdater() }
         state.syncCoordinator = SyncCoordinator(state: state)
         state.syncCoordinator?.start()
+        state.accountService = AccountService(state: state)
+        state.configureAccountFocus()
+        state.accountService?.start()
         makeMenu()
         state.showQuick = { [weak self] date in self?.openQuick(date: date) }
         state.showRangeQuick = { [weak self] date, duration in self?.openQuick(date: date, duration: duration) }
         state.showSticky = { [weak self] id in self?.openSticky(id: id) }
         state.showSettings = { [weak self] in self?.openSettings() }
         reminders.reportError = { [weak self] text in self?.state.errorMessage = text }
-        state.didSave = { [weak self] in self?.refreshServices(); self?.state.syncCoordinator?.localChanged() }
+        state.didSave = { [weak self] in self?.refreshServices(); self?.state.syncCoordinator?.localChanged(); self?.state.acceptAccountFocus(); self?.state.accountService?.changed() }
         state.onTaskCompleted = { [weak self] preferences in self?.completionFeedback.play(preferences) }
         if !state.isSyncTest { keys = HotKeys { [weak self] id in if id == 1 { self?.openQuick(date: nil) } else { self?.openSticky(id: nil) } } }
         refreshServices()
@@ -62,7 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showMain(); return true }
-    func applicationWillTerminate(_ notification: Notification) { state.flushQuickDraft(); state.syncCoordinator?.stop(); keys?.stop(); reminderTimer?.invalidate(); todayPopover?.close() }
+    func applicationWillTerminate(_ notification: Notification) { state.flushQuickDraft(); state.syncCoordinator?.stop(); state.accountService?.stop(); keys?.stop(); reminderTimer?.invalidate(); todayPopover?.close() }
     private func makeMenu() {
         let bar = NSMenu()
         let app = NSMenu(); let appItem = NSMenuItem(); appItem.submenu = app; bar.addItem(appItem)
@@ -458,6 +461,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
                 snapshot.preferences.defaultAllDayReminders = [AllDayReminder(), AllDayReminder(daysBefore: 1, minuteOfDay: 1080)]
             }
             render(SettingsView(state: state, shortcutStatus: { "Control-Q — задача\nControl-D — заметка" }), name: "settings", width: 580, height: 690)
+            state.accountService = AccountService(state: state)
+            render(Form { AccountSettingsSection(state: state) }.formStyle(.grouped), name: "account-settings", width: 580, height: 420)
             render(StickyView(state: state, id: note.id, close: {}), name: "sticky", width: 330, height: 300)
             state.update(note.id) { $0.stickyCollapsed = true; $0.stickyExpandedHeight = 300 }
             render(StickyView(state: state, id: note.id, close: {}), name: "sticky-collapsed", width: 330, height: StickyGeometry.collapsedHeight)

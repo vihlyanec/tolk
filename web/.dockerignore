@@ -1,0 +1,9 @@
+.local
+.impeccable
+tests
+qa
+__pycache__
+*.sqlite*
+.env*
+*.key
+*.pem

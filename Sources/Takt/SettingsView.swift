@@ -55,6 +55,7 @@ struct SettingsView: View {
                 }
                 Text("Закрытие главного окна оставляет приложение в строке меню. Команда «Завершить» останавливает глобальные сочетания и напоминания.").font(.system(size: 11)).foregroundStyle(.secondary)
             }
+            AccountSettingsSection(state: state)
             SyncSettingsSections(state: state)
             Section("Данные на этом Mac") {
                 Text(state.dataURL.path).font(.system(size: 10)).textSelection(.enabled).foregroundStyle(.secondary)

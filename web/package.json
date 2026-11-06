@@ -1,0 +1,1 @@
+{"name":"tolk-web","version":"0.1.0","private":true,"type":"module","scripts":{"test":"node --test tests/sync.test.js","start":"python3 server/main.py --setup"}}

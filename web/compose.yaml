@@ -1,0 +1,55 @@
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18787:8000"
+    environment:
+      TOLK_DATABASE: /data/account.sqlite
+      TOLK_ORIGIN: ${TOLK_ORIGIN:?Set the exact HTTPS origin}
+      TOLK_SETUP_SECRET_FILE: /run/secrets/activation
+      TOLK_VAPID_KEY_FILE: /run/secrets/vapid.pem
+    volumes:
+      - ./server:/app/server:ro
+      - ./public:/app/public:ro
+      - ./data:/data
+      - ./secrets/activation:/run/secrets/activation:ro
+      - ./secrets/vapid.pem:/run/secrets/vapid.pem:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 384m
+    cpus: 0.75
+    pids_limit: 64
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"
+
+  push:
+    build: .
+    command: ["python", "push.py"]
+    restart: unless-stopped
+    environment:
+      TOLK_DATABASE: /data/account.sqlite
+      TOLK_ORIGIN: ${TOLK_ORIGIN:?Set the exact HTTPS origin}
+      TOLK_VAPID_KEY_FILE: /run/secrets/vapid.pem
+    volumes:
+      - ./server:/app/server:ro
+      - ./data:/data
+      - ./secrets/vapid.pem:/run/secrets/vapid.pem:ro
+    read_only: true
+    tmpfs: ["/tmp:size=32m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    cpus: 0.25
+    pids_limit: 32
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"

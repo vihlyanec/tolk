@@ -31,6 +31,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
     var queueDateFilter = "Без времени"
     var queueSearch = ""
     var appUpdater: AppUpdater?
+    var accountService: AccountService?
     var syncCoordinator: SyncCoordinator?
     var externalEventID: UUID?
     var errorMessage: String?
@@ -46,6 +47,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
     @ObservationIgnored var onTaskCompleted: (Preferences) -> Void = { _ in }
     @ObservationIgnored private let database: Database?
     @ObservationIgnored private let memoryOnly: Bool
+    @ObservationIgnored private var appliedAccountFocus: String?
     @ObservationIgnored private var past: [SnapshotEdit] = []
     @ObservationIgnored private var future: [SnapshotEdit] = []
     @ObservationIgnored private var backupDay = ""
@@ -70,6 +72,19 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
             data = snapshot; database = db
         }
         catch { data = Snapshot(); database = nil; errorMessage = "Данные не открыты: \(error.localizedDescription). Запись заблокирована. База: \(dataURL.path)" }
+    }
+    func configureAccountFocus() {
+        pomodoro.didChange = { [weak self] value in
+            guard let self else { return }
+            self.appliedAccountFocus = value
+            self.change { $0.preferences.focusSession = value }
+        }
+        acceptAccountFocus()
+    }
+    func acceptAccountFocus() {
+        guard let value = data.preferences.focusSession, value != appliedAccountFocus else { return }
+        do { try pomodoro.acceptSharedSession(value); appliedAccountFocus = value }
+        catch { errorMessage = error.localizedDescription }
     }
     func startFocus(_ item: Item) {
         guard item.kind == .task, !item.deleted, !item.completed else { return }
@@ -132,6 +147,8 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         let previous = data
         var next = previous; mutate(&next)
         if undo { SyncEngine.enqueueChanges(in: &next) }
+        do { try AccountEngine.enqueue(in: &next) }
+        catch { errorMessage = "Не сохранено: " + error.localizedDescription; return }
         guard next != previous else { return }
         do {
             _ = try next.validated()

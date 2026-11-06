@@ -56,3 +56,26 @@ import TaktCore
     restored.saveResumeNote("")
     #expect(restored.session?.resumeNote == nil)
 }
+
+@Test @MainActor func sharedFocusPreservesAbsoluteDeadlinePauseNoteAndDoesNotEchoRemoteChanges() throws {
+    let first = PomodoroController(url:nil,notificationsEnabled:false)
+    let second = PomodoroController(url:nil,notificationsEnabled:false)
+    let now = Date(timeIntervalSince1970:1794477600)
+    let item = Item(title:"Общий фокус")
+    var notifications = 0
+    second.didChange = { _ in notifications += 1 }
+    first.start(item,now:now)
+    try second.acceptSharedSession(first.sharedSession)
+    #expect(second.session?.deadline == now.addingTimeInterval(1500))
+    #expect(second.session?.taskID == item.id && notifications == 0)
+    first.pause(now:now.addingTimeInterval(123))
+    first.saveResumeNote("Сверить второй пункт")
+    try second.acceptSharedSession(first.sharedSession)
+    #expect(second.session?.deadline == nil && second.session?.remaining == 1377)
+    #expect(second.session?.resumeNote == "Сверить второй пункт" && notifications == 0)
+    let before = second.sharedSession
+    #expect(throws:(any Error).self) { try second.acceptSharedSession("{}") }
+    #expect(second.sharedSession == before)
+    try second.acceptSharedSession("")
+    #expect(second.session == nil && notifications == 0)
+}

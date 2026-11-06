@@ -1,0 +1,452 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-06T14:35:21.709093+00:00",
+  "title": "Design System: Толк · веб-клиент",
+  "extensions": {
+    "colorMeta": {
+      "accent": {
+        "role": "primary",
+        "displayName": "Рабочий синий",
+        "tonalRamp": [
+          "oklch(15% 0.15 264)",
+          "oklch(26% 0.15 264)",
+          "oklch(38% 0.15 264)",
+          "oklch(49% 0.15 264)",
+          "oklch(61% 0.15 264)",
+          "oklch(72% 0.15 264)",
+          "oklch(84% 0.15 264)",
+          "oklch(95% 0.15 264)"
+        ]
+      },
+      "action": {
+        "role": "primary",
+        "displayName": "Основное действие",
+        "tonalRamp": [
+          "oklch(15% 0.15 264)",
+          "oklch(26% 0.15 264)",
+          "oklch(38% 0.15 264)",
+          "oklch(49% 0.15 264)",
+          "oklch(61% 0.15 264)",
+          "oklch(72% 0.15 264)",
+          "oklch(84% 0.15 264)",
+          "oklch(95% 0.15 264)"
+        ]
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "canvas",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "surface",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "text",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "muted",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "line",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "soft": {
+        "role": "neutral",
+        "displayName": "soft",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "field": {
+        "role": "neutral",
+        "displayName": "field",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "danger": {
+        "role": "semantic",
+        "displayName": "danger",
+        "tonalRamp": [
+          "oklch(15% 0.11 20)",
+          "oklch(26% 0.11 20)",
+          "oklch(38% 0.11 20)",
+          "oklch(49% 0.11 20)",
+          "oklch(61% 0.11 20)",
+          "oklch(72% 0.11 20)",
+          "oklch(84% 0.11 20)",
+          "oklch(95% 0.11 20)"
+        ]
+      },
+      "priority-medium": {
+        "role": "semantic",
+        "displayName": "priority-medium",
+        "tonalRamp": [
+          "oklch(15% 0.11 75)",
+          "oklch(26% 0.11 75)",
+          "oklch(38% 0.11 75)",
+          "oklch(49% 0.11 75)",
+          "oklch(61% 0.11 75)",
+          "oklch(72% 0.11 75)",
+          "oklch(84% 0.11 75)",
+          "oklch(95% 0.11 75)"
+        ]
+      },
+      "dark-accent": {
+        "role": "primary",
+        "displayName": "Тёмная тема · Рабочий синий",
+        "tonalRamp": [
+          "oklch(15% 0.15 264)",
+          "oklch(26% 0.15 264)",
+          "oklch(38% 0.15 264)",
+          "oklch(49% 0.15 264)",
+          "oklch(61% 0.15 264)",
+          "oklch(72% 0.15 264)",
+          "oklch(84% 0.15 264)",
+          "oklch(95% 0.15 264)"
+        ]
+      },
+      "dark-canvas": {
+        "role": "neutral",
+        "displayName": "Тёмная тема · canvas",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-surface": {
+        "role": "neutral",
+        "displayName": "Тёмная тема · surface",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-text": {
+        "role": "neutral",
+        "displayName": "Тёмная тема · text",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-muted": {
+        "role": "neutral",
+        "displayName": "Тёмная тема · muted",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-line": {
+        "role": "neutral",
+        "displayName": "Тёмная тема · line",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-soft": {
+        "role": "neutral",
+        "displayName": "Тёмная тема · soft",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-field": {
+        "role": "neutral",
+        "displayName": "Тёмная тема · field",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-danger": {
+        "role": "semantic",
+        "displayName": "Тёмная тема · danger",
+        "tonalRamp": [
+          "oklch(15% 0.11 20)",
+          "oklch(26% 0.11 20)",
+          "oklch(38% 0.11 20)",
+          "oklch(49% 0.11 20)",
+          "oklch(61% 0.11 20)",
+          "oklch(72% 0.11 20)",
+          "oklch(84% 0.11 20)",
+          "oklch(95% 0.11 20)"
+        ]
+      },
+      "dark-priority-medium": {
+        "role": "semantic",
+        "displayName": "Тёмная тема · priority-medium",
+        "tonalRamp": [
+          "oklch(15% 0.11 75)",
+          "oklch(26% 0.11 75)",
+          "oklch(38% 0.11 75)",
+          "oklch(49% 0.11 75)",
+          "oklch(61% 0.11 75)",
+          "oklch(72% 0.11 75)",
+          "oklch(84% 0.11 75)",
+          "oklch(95% 0.11 75)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Заголовок списка",
+        "purpose": "Название текущей рабочей области."
+      },
+      "timer": {
+        "displayName": "Таймер",
+        "purpose": "Табличные цифры текущего сеанса, не рекламный display."
+      }
+    },
+    "shadows": [
+      {
+        "name": "editor",
+        "value": "0 16px 60px #0004",
+        "purpose": "Модальный редактор."
+      },
+      {
+        "name": "notice",
+        "value": "0 8px 30px #0003",
+        "purpose": "Краткое сообщение о результате."
+      }
+    ],
+    "motion": [],
+    "breakpoints": [
+      {
+        "name": "mobile",
+        "value": "799px"
+      },
+      {
+        "name": "focus-stack",
+        "value": "950px"
+      },
+      {
+        "name": "compact-sidebar",
+        "value": "1000px"
+      },
+      {
+        "name": "calendar-rail-only",
+        "value": "1100px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Основная кнопка",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Рабочее действие со стандартным фокусом.",
+      "html": "<button class=\"ds-button-primary\">Продолжить</button>",
+      "css": ".ds-button-primary{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;font-size:13px;background:var(--action,#426fe9);color:#fff;padding:9px 14px;border:0;border-radius:6px;min-height:32px;cursor:pointer}.ds-button-primary:hover{filter:brightness(.97)}.ds-button-primary:active{opacity:.75}.ds-button-primary:focus-visible{outline:2px solid var(--accent,#3268d9);outline-offset:2px}"
+    },
+    {
+      "name": "Вторичная кнопка",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Рабочее действие со стандартным фокусом.",
+      "html": "<button class=\"ds-button-secondary\">Сохранить настройки</button>",
+      "css": ".ds-button-secondary{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;font-size:13px;background:var(--field,#e8e8e8);color:var(--text,#232323);padding:7px 12px;border:0;border-radius:6px;min-height:32px;cursor:pointer}.ds-button-secondary:hover{filter:brightness(.97)}.ds-button-secondary:active{opacity:.75}.ds-button-secondary:focus-visible{outline:2px solid var(--accent,#3268d9);outline-offset:2px}"
+    },
+    {
+      "name": "Поле ввода",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Нейтральное поле с видимой подписью.",
+      "html": "<label class=\"ds-field\">Описание<input placeholder=\"Описание задачи\"></label>",
+      "css": ".ds-field{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;font-size:13px;display:flex;flex-direction:column;gap:6px;color:var(--muted,#666)}.ds-field input{font:inherit;padding:7px 9px;color:var(--text,#232323);background:var(--field,#e8e8e8);border:1px solid transparent;border-radius:6px}.ds-field input:focus-visible{outline:2px solid var(--accent,#3268d9);outline-offset:2px}"
+    },
+    {
+      "name": "Активная навигация",
+      "kind": "nav",
+      "refersTo": "navigation-active",
+      "description": "Синий выбор на мягкой подложке.",
+      "html": "<button class=\"ds-nav\" aria-current=\"page\"><svg width=\"19\" height=\"19\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01\"/></svg>Все <small>5</small></button>",
+      "css": ".ds-nav{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;font-size:13px;display:flex;align-items:center;gap:9px;width:220px;padding:7px 9px;min-height:36px;color:var(--accent,#3268d9);background:var(--soft,#e6edff);border:0;border-radius:5px;cursor:pointer}.ds-nav small{margin-left:auto;color:var(--muted,#666);font-size:11px}.ds-nav:hover{filter:brightness(.97)}.ds-nav:focus-visible{outline:2px solid var(--accent,#3268d9);outline-offset:2px}"
+    },
+    {
+      "name": "Средний приоритет",
+      "kind": "chip",
+      "refersTo": "priority-medium",
+      "description": "Контрастный текст зависит от темы; янтарная подложка обозначает семантику.",
+      "html": "<span class=\"ds-priority\"><svg width=\"10\" height=\"10\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M5 21V3h14l-3 5 3 5H5\"/></svg>Средний</span>",
+      "css": ".ds-priority{display:inline-flex;align-items:center;gap:3px;font:11px -apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;border-radius:12px;padding:3px 7px;color:var(--priority-medium,#986000);background:color-mix(in srgb,var(--priority-medium,#986000) 12%,transparent)}"
+    },
+    {
+      "name": "Карточка очереди",
+      "kind": "card",
+      "refersTo": "queue-card",
+      "description": "Переносимая задача для календаря.",
+      "html": "<button class=\"ds-queue\"><strong>Подготовить отчёт</strong><small>Работа · 30 мин</small></button>",
+      "css": ".ds-queue{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;font-size:13px;display:block;width:240px;text-align:left;padding:10px;color:var(--text,#232323);background:var(--soft,#e6edff);border:1px solid color-mix(in srgb,var(--accent,#3268d9) 25%,transparent);border-radius:5px;cursor:pointer}.ds-queue strong{font-size:12px;font-weight:500;display:block}.ds-queue small{display:block;margin-top:5px;font-size:11px;color:var(--muted,#666)}.ds-queue:hover{filter:brightness(.97)}.ds-queue:focus-visible{outline:2px solid var(--accent,#3268d9);outline-offset:2px}"
+    },
+    {
+      "name": "Круг завершения",
+      "kind": "custom",
+      "refersTo": "task-row",
+      "description": "Отдельное действие завершения рядом с содержимым.",
+      "html": "<div class=\"ds-task\"><button aria-label=\"Завершить задачу\" class=\"ds-complete\"></button><span>Подготовить отчёт</span></div>",
+      "css": ".ds-task{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;font-size:13px;display:flex;align-items:center;gap:6px;color:var(--text,#232323);padding:8px 9px}.ds-complete{width:23px;height:23px;display:grid;place-items:center;background:transparent;border:0;cursor:pointer}.ds-complete::before{content:\"\";width:15px;height:15px;border:1.5px solid var(--muted,#666);border-radius:50%}.ds-complete:hover::before{border-color:var(--accent,#3268d9)}.ds-complete:active{opacity:.75}.ds-complete:focus-visible{outline:2px solid var(--accent,#3268d9);outline-offset:2px}"
+    },
+    {
+      "name": "Полоса фокуса",
+      "kind": "custom",
+      "refersTo": "focus-bar",
+      "description": "Текущий сеанс остаётся доступен в списках.",
+      "html": "<div class=\"ds-focus\"><button>Фокус · 24:55 · пауза</button><button>Продолжить</button></div>",
+      "css": ".ds-focus{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;border-radius:12px;background:var(--surface,#f2f2f2)}.ds-focus button{font:inherit;color:var(--accent,#3268d9);background:none;border:0;min-height:44px;cursor:pointer}.ds-focus button:hover{background:var(--field,#e8e8e8)}.ds-focus button:focus-visible{outline:2px solid var(--accent,#3268d9);outline-offset:2px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Знакомый рабочий стол Толка",
+    "overview": "Веб-клиент продолжает установленный Толк: плотный рабочий список, нейтральные панели, системный шрифт, синие действия и круглое завершение. Визуальный авторитет — нативное приложение, выбранное пользователем; мобильная компоновка адаптирует его рабочую иерархию к пальцу и safe area.\n\nЗафиксирована фактическая реализация `public/style.css`, `public/app.js`, `public/index.html` и снимки `/private/tmp/tolk-web-final-qa`; нативный ориентир — `/private/tmp/tolk-native-visual-authority/list.png`. Корневой `DESIGN.md` описывает историческую нативную систему и этим документом не заменяется. Код общего аккаунта, задач, заметок, проектов, настроек и сеанса фокуса реализован. Личное подключение Mac к аккаунту и доставка фонового push на физическом iPhone остаются непроверенными: наличие интерфейса и кода не считается их подтверждением.",
+    "keyCharacteristics": [
+      "Синий акцент для выбора, времени и действий.",
+      "Плотные строки, нейтральные панели и тонкие разделители.",
+      "Круглое завершение и компактные свойства задачи.",
+      "Светлая, тёмная и системная тема; отдельная мобильная компоновка."
+    ],
+    "rules": [
+      {
+        "name": "The Native Authority Rule",
+        "body": "Новые вебповерхности продолжают визуальные роли установленного Толка: синий акцент, нейтральные панели и круг завершения.",
+        "section": "colors"
+      },
+      {
+        "name": "The Quiet Accent Rule",
+        "body": "Синий обозначает действие и состояние; приоритеты и пользовательские цвета не становятся дополнительной брендовой палитрой.",
+        "section": "colors"
+      },
+      {
+        "name": "The Mobile Field Rule",
+        "body": "На телефоне поля и названия задач сохраняют читаемый размер, а функциональные элементы получают увеличенную область нажатия.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Workspace Rule",
+        "body": "Рабочие строки и соседние панели разделяются тоном и линией; тень оставлена модальному редактору и сообщению.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do сохранять нативные цветовые роли в обеих темах, включая отдельный контрастный цвет среднего приоритета.",
+      "Do учитывать safe area, длинные названия, клавиатурный фокус и мобильный ввод.",
+      "Do показывать реальные статусы очереди, ошибок и конфликтов и сохранять явный выбор версии."
+    ],
+    "donts": [
+      "Don't возвращать прежнюю оранжевую вебидентичность, стеклянный плавающий док или квадрат завершения.",
+      "Don't превращать цвет пользовательского проекта, тега или приоритета в брендовый акцент.",
+      "Don't объявлять личное подключение Mac или физический iPhone push проверенными по коду и мобильному скриншоту."
+    ]
+  }
+}
