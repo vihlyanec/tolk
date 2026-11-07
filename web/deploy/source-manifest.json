@@ -1,15 +1,15 @@
 {
-  "date": "2026-11-06",
+  "date": "2026-11-07",
   "url": "https://tolk.103-102-229-153.sslip.io",
   "native_source_commit": "d2580b28730ec7ccc930028181b30396507b177c",
-  "native_release_state": "signed draft1.1.0/build38; not published or installed",
+  "native_release_state": "1.1.0/build38 published and installed; account connected and synchronized",
   "tests": {
     "swift": 149,
-    "python": 32,
+    "python": 34,
     "javascript": 18,
     "release_scripts": 14
   },
-  "verification": "13public HTTPS assets+19live sources SHA-256 match; SQLite quick_check ok; auth/origin checks pass; web healthy, push running; serialized startup and read-only Gunicorn verified",
+  "verification": "Server validation repair: native queue215→0, conflicts0, cursor266; all256cached records and server entities match canonical SHA-256; web healthy; SQLite quick_check ok",
   "sha256": {
     "public/index.html": "b0a6238f31da299d267a5716532df5bc044a69d6d54cf7e01e4b67b95a00f495",
     "public/smart.js": "38cba2be42210d806e8588a329e39b0cc979e549ff1872e39e34171b2cc9b4e8",
@@ -24,14 +24,15 @@
     "public/sw.js": "5af15767f87d16b009af64c0a6c5b7d7b9948d786b6b29da746bdd428651dd92",
     "public/brand.png": "4563e1902c5bc33d54eff8ad59af6c241a305ef8c5c9e142a4a035bde2057ba2",
     "public/icon-512.png": "ea08ff30b8f4dabafd4d65667978018eba0bdc16002554edafa39c6e1ae10e51",
-    "server/store.py": "8eea531fc001f0da2674bda3962033a20ae0de24752ba9bee3bc77e8db7b2f17",
+    "server/store.py": "9f121876b7374a59bf646ba1ce03d4c244f9683ced878b18ecc8441e54a89ad2",
     "server/backup.py": "470e71b0ceffd9fe43fd0b823a6c5249da872a176a4c19eeb5d79656f782d4b9",
     "server/main.py": "042c342a145c717653c4cc58f8306c7020bea85238c9e11d82cf4b663a8cefb1",
-    "server/schema.py": "740878070f655ec1cb09e4d5f12f29c116e094d91eea2aefd8c27aa5710999b4",
+    "server/schema.py": "1bb828876fbce90e7c870381b10d1bf587a92eba7b71d8fe5238fa8a90f4c978",
     "server/wsgi.py": "df39bfbc475d5617311ee224a3c097b62be478f4a820fd36ab48a5d73da5a776",
     "server/push.py": "4ead7bc320ee60560ce77451d2dd6933eb972ff949c811f2b901e2f6195c3a38",
     "Dockerfile": "e18ed6a7e5a397af9a03bba861124bf44ad3db9580e9f438f01569a2e8184199",
     "compose.yaml": "dab18e31018528dff2777cec5132a7bffe9d4d262f8d1efad8db199d6ac08d06",
     ".dockerignore": "6d474fa6b34270912c6835a2447de7063017ffd9df95b941b864449e2c2a1e01"
-  }
+  },
+  "sync_repair_commit": "9a7340bd538408f0f874a1fc3fcfb735564dfa10"
 }

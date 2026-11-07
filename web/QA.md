@@ -100,3 +100,9 @@ Production 6 ноября: веб и worker напоминаний устано�
 При первом запуске обнаружена гонка инициализации Store. Добавлены web healthcheck и зависимость push от здорового web; служебный сокет Gunicorn отключён в read-only контейнере. После исправления web healthy, push running, свежие журналы запуска без ошибок.
 
 Native 1.1.0/build38 — подписанный Draft436632082. CI42237798708 прошёл на точном d2580b2, пакет не опубликован и не установлен. Личное объединение требует пользовательского подключения Mac после обновления.
+
+## Исправление остановки обмена · 7 ноября 2026
+
+Native1.1.0 установлен и подключён. Сервер отвергал пустое название существующей нативной записи и поле tentative у Apple events, откатывая всю пачку. Native-only совместимость пустых task/event названий добавлена без ослабления проверки веб-ввода; tentative принимает только bool. Новый Store/WSGI regression проверяет ACK/retry и отсутствие возможности включить native-режим из браузерного body. 34Python+18JS tests passed на синтетических данных.
+
+После online backup20261107T115048075287Z.sqlite и сохранения прежних2server файлов в /opt/tolk-web-repair-20261107 исправление установлено; SHA-256 совпали. SIGHUP обновил только Gunicorn workers, web остался healthy. Mac автоматически отправил очередь215→0, conflicts0, cursor266. Каноническая SHA-256 всех256records совпала между Mac cache и server entities; counts145task/note,6project,15tag,89event,1settings. SQLitequick_checkok. Локальная read-only backup /private/tmp/tolk-sync-repair-20261107/native-before.sqlite mode600 в700директории; личные данные в тесты/репозиторий не копировались. Нативный пакет и ключи не менялись, новый Mac-релиз не нужен.
