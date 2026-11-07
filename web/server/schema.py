@@ -15,8 +15,8 @@ SETTINGS_FIELDS = {'hourHeight','calendarUXVersion','showCompleted','shiftedShor
  'defaultTimedReminderOffsets','defaultAllDayReminders','grouping','sorting','integrations','calendarEvents'}
 
 
-def extras(kind, patch, invalid, identifier):
-    allowed = {'task':ITEM_FIELDS, 'project':PROJECT_FIELDS, 'tag':{'title','color','parentID','deleted','order'}, 'settings':SETTINGS_FIELDS, 'event':{'title','notes','location','url','start','end','allDay','timeZone','calendarID','sourceID','eventID','externalID','occurrence','deleted','day','owner'}}.get(kind,set())
+def extras(kind, patch, invalid, identifier, allow_blank_title=False):
+    allowed = {'task':ITEM_FIELDS, 'project':PROJECT_FIELDS, 'tag':{'title','color','parentID','deleted','order'}, 'settings':SETTINGS_FIELDS, 'event':{'title','notes','location','url','start','end','allDay','tentative','timeZone','calendarID','sourceID','eventID','externalID','occurrence','deleted','day','owner'}}.get(kind,set())
     selected = {k:v for k,v in patch.items() if k in allowed}
     for key, value in selected.items():
         if value is None and (key in ITEM_OPTIONAL or key in SETTINGS_FIELDS or key in {'parentID','url','externalID'}): continue
@@ -39,7 +39,7 @@ def extras(kind, patch, invalid, identifier):
             if key=='repeatEveryDays' and (type(value) is not int or not 1<=value<=3650): raise invalid('Некорректный повтор')
             if key=='hourHeight' and not 36<=value<=180: raise invalid('Некорректный масштаб')
             if key=='reminderMinutes' and (type(value) is not int or not 0<=value<=525600): raise invalid('Некорректное напоминание')
-        elif key in {'stickyOpen','stickyPinned','stickyCollapsed','externalRecurrence','archived','kanban','deleted','showCompleted','shiftedShortcuts','completionSoundEnabled','completionHapticsEnabled','quickDraftDescriptionExpanded','allDay'}:
+        elif key in {'stickyOpen','stickyPinned','stickyCollapsed','externalRecurrence','archived','kanban','deleted','showCompleted','shiftedShortcuts','completionSoundEnabled','completionHapticsEnabled','quickDraftDescriptionExpanded','allDay','tentative'}:
             if type(value) is not bool: raise invalid('Ожидается переключатель')
         elif key in {'recurrenceSourceID','repeatParentID','parentID','owner'}:
             if value: identifier(value)
@@ -66,7 +66,7 @@ def extras(kind, patch, invalid, identifier):
             except (ValueError,KeyError):raise invalid('Неизвестный часовой пояс') from None
         if key in {'grouping','sorting'} and (len(value)>1000 or any(not isinstance(k,str) or not isinstance(v,str) or len(k)>500 or len(v)>500 for k,v in value.items())):raise invalid('Некорректный вид списка')
         if key in {'color','stickyColor'} and not re.fullmatch('[0-9a-fA-F]{6}',value): raise invalid('Некорректный цвет')
-        if key=='title' and not value.strip(): raise invalid('Введите название')
+        if key=='title' and not value.strip() and not allow_blank_title: raise invalid('Введите название')
     return {k:v for k,v in patch.items() if k not in selected}
 
 

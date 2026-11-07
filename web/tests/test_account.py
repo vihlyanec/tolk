@@ -84,3 +84,30 @@ class AccountProtocolTests(unittest.TestCase):
         task=[r for r in self.store.sync(self.account['id'],[],0)['changes'] if r['id']==item][-1]
         self.assertEqual(task['data']['projectID'],'');self.assertEqual(task['data']['tagIDs'],[])
         self.assertEqual(task['data']['title'],'Сохранить задачу')
+    def test_native_blank_titles_and_calendar_tentative_do_not_block_a_batch(self):
+        task,event=str(uuid.uuid4()),str(uuid.uuid4())
+        ops=[self.operation('task',task,{'title':'','body':'Заметка без заголовка','itemKind':'note','deleted':False}),
+             self.operation('event',event,{'title':'','tentative':True,'start':1794477600,'end':1794481200,'allDay':False,'owner':str(uuid.uuid4()),'deleted':False})]
+        # Web capture still requires a title; existing native records remain lossless.
+        with self.assertRaises(Invalid):self.store.sync(self.account['id'],ops,0)
+        response=self.store.sync(self.account['id'],ops,0,native=True)
+        self.assertEqual(len(response['results']),2)
+        self.assertTrue(all(r['accepted'] for r in response['results']))
+        self.assertEqual(response['results'][0]['record']['data']['title'],'')
+        self.assertTrue(response['results'][1]['record']['data']['tentative'])
+        # Retry returns identical receipts, without duplicate changes.
+        retry=self.store.sync(self.account['id'],ops,response['cursor'],native=True)
+        self.assertEqual(retry['results'],response['results'])
+        self.assertEqual(retry['changes'],[])
+        with self.assertRaises(Invalid):self.store.sync(self.account['id'],[self.operation('event',str(uuid.uuid4()),{'title':'Событие','tentative':'true'})],0,native=True)
+    def test_only_authenticated_native_route_accepts_legacy_blank_titles(self):
+        op=self.operation('task',str(uuid.uuid4()),{'title':'','itemKind':'note','body':'Содержимое сохранено'})
+        # A browser cannot opt into native compatibility through the request body.
+        body={'operations':[op],'native':True,'epoch':self.store.epoch}
+        self.assertEqual(self.request('/api/sync',body,web=True)['status'],400)
+        pair=self.request('/api/device/start',{'name':'QA Mac'})['body']
+        self.request('/api/device/approve',{'code':pair['code']},web=True)
+        token=self.request('/api/device/poll',pair)['body']['token']
+        response=self.request('/api/device/sync',body,token=token)
+        self.assertEqual(response['status'],200)
+        self.assertEqual(response['body']['results'][0]['record']['data']['title'],'')

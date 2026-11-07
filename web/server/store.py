@@ -22,10 +22,11 @@ def identifier(value):
         raise Invalid("Некорректный идентификатор") from None
 
 
-def validate(kind, patch):
+def validate(kind, patch, native=False):
     if not isinstance(patch, dict) or not patch:
         raise Invalid("Неподдерживаемые поля")
-    patch = extras(kind, patch, Invalid, identifier)
+    allow_blank_title = native and kind in {'task','event'}
+    patch = extras(kind, patch, Invalid, identifier, allow_blank_title=allow_blank_title)
     if not patch and kind in {"task", "project", "tag", "settings", "event"}: return
     fields = {
         "task": {"title", "body", "completed", "deleted", "date", "time", "projectID", "priority"},
@@ -66,7 +67,7 @@ def validate(kind, patch):
                         raise ValueError()
             except (ValueError, TypeError, KeyError, OverflowError):
                 raise Invalid("Некорректный сеанс фокуса") from None
-        if key == "title" and not value.strip():
+        if key == "title" and not value.strip() and not allow_blank_title:
             raise Invalid("Введите название")
         if key == "theme" and value not in {"system", "light", "dark"}:
             raise Invalid("Неизвестная тема")
@@ -194,7 +195,7 @@ class Store:
                 kind, base, patch = op.get("kind"), op.get("base"), op.get("patch")
                 if type(base) is not int or base < 0:
                     raise Invalid("Некорректная версия")
-                validate(kind, patch)
+                validate(kind, patch, native=native)
                 if kind == "settings" and entity_id != account:
                     raise Invalid("Настройки принадлежат аккаунту")
                 request = json.dumps(op, sort_keys=True, ensure_ascii=False)
