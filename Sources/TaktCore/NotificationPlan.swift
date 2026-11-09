@@ -11,6 +11,7 @@ public struct PlannedReminder: Equatable, Sendable {
     public var itemID: UUID
     public var title: String
     public var fire: Date
+    public var isStart = false
 }
 public enum NotificationPlan {
     public static func timedOffsets(item: Item, preferences: Preferences) -> [Int] {
@@ -36,7 +37,7 @@ public enum NotificationPlan {
             // One banner per task and minute, even if equivalent rules carry different seconds.
             var minutes = Set<Int>()
             for fire in Set(dates).sorted() where fire > now && minutes.insert(Int(fire.timeIntervalSince1970 / 60)).inserted {
-                result.append(PlannedReminder(identifier: "task-\(item.id.uuidString)-\(Int(fire.timeIntervalSince1970))", itemID: item.id, title: item.title, fire: fire))
+                result.append(PlannedReminder(identifier: "task-\(item.id.uuidString)-\(Int(fire.timeIntervalSince1970))", itemID: item.id, title: item.title, fire: fire, isStart: item.schedule.isTimed && fire == start))
             }
         }
         return result.sorted { $0.fire < $1.fire }.prefix(50).map { $0 }

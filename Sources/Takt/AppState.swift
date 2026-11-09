@@ -43,6 +43,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
     @ObservationIgnored var showRangeQuick: (Date, Int) -> Void = { _, _ in }
     @ObservationIgnored var showSticky: (UUID?) -> Void = { _ in }
     @ObservationIgnored var showSettings: () -> Void = {}
+    @ObservationIgnored var showFocusTimer: () -> Void = {}
     @ObservationIgnored var didSave: () -> Void = {}
     @ObservationIgnored var onTaskCompleted: (Preferences) -> Void = { _ in }
     @ObservationIgnored private let database: Database?
@@ -96,6 +97,16 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
             if current.taskID == item.id { area = .focus }
             else { pendingFocusTask = item }
         } else { pomodoro.start(item); area = .focus }
+    }
+    /// Resolve the current record rather than trusting a potentially stale banner.
+    @discardableResult func focusFromNotification(_ id: UUID) -> Bool {
+        guard let item = item(id), item.kind == .task, !item.deleted, !item.completed else { return false }
+        if let current = pomodoro.session {
+            if current.taskID == id, current.phase == .focus, current.seconds(at: Date()) > 0 {
+                if current.deadline == nil { pomodoro.resume() }
+            } else { pendingFocusTask = item }
+        } else { pomodoro.start(item) }
+        return true
     }
     var calendar: Calendar { Dates.calendar(zone: data.preferences.timeZone) }
     var isDemo: Bool { memoryOnly }

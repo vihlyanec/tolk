@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     private var keys: HotKeys?
     private let reminders = Reminders()
     private let completionFeedback = CompletionFeedback()
+    private var focusEdge: FocusEdgeController?
     private var previousApplication: NSRunningApplication?
     private var lastShift: Bool?
     private var reminderTimer: Timer?
@@ -33,6 +34,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         // Register the actual bundle so notification banners resolve its .icns icon,
         // rather than relying only on the runtime Dock image.
         LSRegisterURL(Bundle.main.bundleURL as CFURL, true)
+        let notificationCenter = UNUserNotificationCenter.current()
+        notificationCenter.delegate = self
+        Reminders.registerActions(with: notificationCenter)
         if let filename = Bundle.main.object(forInfoDictionaryKey: "CFBundleIconFile") as? String,
            let resources = Bundle.main.resourceURL,
            let icon = NSImage(contentsOf: resources.appendingPathComponent(filename)) {
@@ -49,6 +53,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         state.showRangeQuick = { [weak self] date, duration in self?.openQuick(date: date, duration: duration) }
         state.showSticky = { [weak self] id in self?.openSticky(id: id) }
         state.showSettings = { [weak self] in self?.openSettings() }
+        focusEdge = FocusEdgeController(state: state, defaults: state.isDemo ? nil : .standard)
+        state.showFocusTimer = { [weak self] in self?.focusEdge?.show() }
+        state.pomodoro.didUpdate = { [weak self] in self?.focusEdge?.sync() }
+        focusEdge?.sync()
         reminders.reportError = { [weak self] text in self?.state.errorMessage = text }
         state.didSave = { [weak self] in self?.refreshServices(); self?.state.syncCoordinator?.localChanged(); self?.state.acceptAccountFocus(); self?.state.accountService?.changed() }
         state.onTaskCompleted = { [weak self] preferences in self?.completionFeedback.play(preferences) }
@@ -59,11 +67,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
                 MainActor.assumeIsolated { if let self { self.reminders.sync(self.state.data) } }
             }
         }
-        UNUserNotificationCenter.current().delegate = self
-        showMain()
+        if NSApp.isActive { showMain() }
         for item in state.data.items where item.stickyOpen && !item.deleted { openSticky(id: item.id) }
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+    func applicationDidBecomeActive(_ notification: Notification) {
+        guard !ProcessInfo.processInfo.arguments.contains("--render") else { return }
+        if mainWindow == nil { showMain() }
+    }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showMain(); return true }
     func applicationWillTerminate(_ notification: Notification) { state.flushQuickDraft(); state.syncCoordinator?.stop(); state.accountService?.stop(); keys?.stop(); reminderTimer?.invalidate(); todayPopover?.close() }
     private func makeMenu() {
@@ -276,6 +287,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         settingsWindow?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
     }
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions { [.banner,.sound] }
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        let action = response.actionIdentifier
+        let category = response.notification.request.content.categoryIdentifier
+        let id = (response.notification.request.content.userInfo["itemID"] as? String).flatMap(UUID.init(uuidString:))
+        await handleNotificationAction(action, category: category, itemID: id)
+    }
+    private func handleNotificationAction(_ action: String, category: String, itemID: UUID?) {
+        guard action == Reminders.focusAction, category == Reminders.focusCategory, let itemID else { return }
+        guard state.focusFromNotification(itemID) else {
+            state.errorMessage = "Задача из уведомления уже завершена или удалена. Выберите другую задачу для фокуса."
+            showMain(); return
+        }
+        if state.pendingFocusTask != nil { state.area = .focus; showMain() }
+        else { focusEdge?.show() }
+    }
     @objc private func mainAction() { showMain() }
     @objc private func quickAction() { openQuick(date: nil) }
     @objc private func noteAction() { openSticky(id: nil) }
@@ -318,6 +344,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
                 guard let png = bitmap.representation(using: .png, properties: [:]) else { return }
                 do { try png.write(to: directory.appendingPathComponent(name + ".png")) } catch { FileHandle.standardError.write(Data(error.localizedDescription.utf8)) }
             }
+        }
+        if ProcessInfo.processInfo.arguments.contains("--render-focus-edge") {
+            let date = Date(timeIntervalSince1970: 1_794_222_000)
+            let task = Item(title: "Подготовить план проекта")
+            state.pomodoro.start(task, now: date.addingTimeInterval(-78))
+            render(FocusEdgePreviewBoard(state: state, date: date), name: "focus-edge-example", width: 820, height: 520)
+            state.pomodoro.pause(now: date); state.pomodoro.skipResumeNote()
+            render(FocusEdgePreviewBoard(state: state, date: date), name: "focus-edge-paused", width: 820, height: 520)
+            state.pomodoro.resume(now: date)
+            let end = date.addingTimeInterval(1422)
+            render(FocusEdgePreviewBoard(state: state, date: end), name: "focus-edge-finished", width: 820, height: 520)
+            state.pomodoro.next(now: end)
+            render(FocusEdgePreviewBoard(state: state, date: end), name: "focus-edge-break", width: 820, height: 520)
+            state.pomodoro.start(Item(title: "Очень длинное название задачи для проверки узкой панели управления фокусом"), now: date.addingTimeInterval(-78))
+            render(FocusEdgePreviewBoard(state: state, date: date, opaque: true), name: "focus-edge-accessible-long-title", width: 820, height: 520)
+            NSApp.terminate(nil); return
         }
         render(MenuBarTodayView(state: state, openTask: { _ in }, openMain: {}, openSettings: {}, close: {}), name: "menu-today", width: 380, height: 560)
         let menuPreviewTheme = state.data.preferences.theme

@@ -3,6 +3,12 @@ import UserNotifications
 import TaktCore
 
 final class Reminders {
+    static let focusCategory = "tolk-task-start"
+    static let focusAction = "tolk-start-focus"
+    static func registerActions(with center: UNUserNotificationCenter) {
+        let action = UNNotificationAction(identifier: focusAction, title: "Сфокусироваться", options: [])
+        center.setNotificationCategories([UNNotificationCategory(identifier: focusCategory, actions: [action], intentIdentifiers: [], options: [])])
+    }
     private var debounce: Task<Void, Never>?
     private var worker: Task<Void, Never>?
     private var latest: Snapshot?
@@ -56,12 +62,14 @@ final class Reminders {
         let content = UNMutableNotificationContent()
         content.title = reminder.title; content.body = "Напоминание о задаче"
         content.sound = NotificationAudio.taskReminder.notificationSound
+        content.categoryIdentifier = reminder.isStart ? focusCategory : ""
         content.threadIdentifier = "task-" + reminder.itemID.uuidString
-        content.userInfo = ["eventKey": reminder.identifier, "itemID": reminder.itemID.uuidString, "formatVersion": 4]
+        content.userInfo = ["eventKey": reminder.identifier, "itemID": reminder.itemID.uuidString, "formatVersion": 5]
         return content
     }
     static func isCurrent(_ request: UNNotificationRequest, for reminder: PlannedReminder) -> Bool {
         request.identifier == reminder.identifier && request.content.title == reminder.title &&
-        request.content.userInfo["formatVersion"] as? Int == 4 && request.content.attachments.isEmpty
+        request.content.userInfo["formatVersion"] as? Int == 5 && request.content.attachments.isEmpty &&
+        request.content.categoryIdentifier == (reminder.isStart ? focusCategory : "")
     }
 }

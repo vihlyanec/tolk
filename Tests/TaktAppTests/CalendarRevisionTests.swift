@@ -54,13 +54,13 @@ import TaktCore
     let reminder = try #require(NotificationPlan.events(snapshot: snapshot).first)
     let content = Reminders.content(for: reminder)
     #expect(content.attachments.isEmpty)
-    #expect(content.userInfo["formatVersion"] as? Int == 4)
+    #expect(content.userInfo["formatVersion"] as? Int == 5)
     let current = UNNotificationRequest(identifier: reminder.identifier, content: content, trigger: nil)
     #expect(Reminders.isCurrent(current, for: reminder))
     let old = try #require(content.mutableCopy() as? UNMutableNotificationContent)
-    old.userInfo["formatVersion"] = 3
+    old.userInfo["formatVersion"] = 4
     #expect(!Reminders.isCurrent(UNNotificationRequest(identifier: reminder.identifier, content: old, trigger: nil), for: reminder))
-    old.userInfo["formatVersion"] = 4; old.title = "Старое название"
+    old.userInfo["formatVersion"] = 5; old.title = "Старое название"
     #expect(!Reminders.isCurrent(UNNotificationRequest(identifier: reminder.identifier, content: old, trigger: nil), for: reminder))
     old.title = reminder.title
     let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Resources/BrandIcon.png")

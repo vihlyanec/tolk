@@ -9,6 +9,7 @@ import TaktCore
     var pauseDraft = ""
     var error: String?
     @ObservationIgnored var didChange: (String) -> Void = { _ in }
+    @ObservationIgnored var didUpdate: () -> Void = {}
     private let url: URL?
     private let notificationsEnabled: Bool
     @ObservationIgnored private let startFeedback = FocusStartFeedback()
@@ -79,6 +80,7 @@ import TaktCore
             error = nil
         } catch { self.error = "Таймер работает, но не сохранён: \(error.localizedDescription)" }
         if notify { didChange(sharedSession) }
+        didUpdate()
         // Demo and unit tests never request permission or schedule system notifications.
         guard url != nil, notificationsEnabled else { return }
         let previous = notificationTask
@@ -128,6 +130,9 @@ struct PomodoroWorkspace: View {
             HStack(spacing: 0) {
                 ScrollView { VStack(spacing: 0) {
                     HStack { Text("Помодоро").font(.system(size: 24, weight: .bold)); Spacer()
+                        Button { state.showFocusTimer() } label: { Image(systemName: "rectangle.trailinghalf.inset.filled") }
+                            .help("Показать таймер у края экрана").accessibilityLabel("Показать таймер у края экрана")
+                            .disabled(focus.session == nil)
                         Menu { taskChoices } label: { Label(focus.session == nil ? "Выбрать задачу" : "Сменить задачу", systemImage: "plus") }.fixedSize()
                     }.padding(24)
                     Spacer(minLength: 12)
