@@ -13,7 +13,7 @@ final class KeyPanel: NSPanel {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNotificationCenterDelegate, NSMenuItemValidation {
-    let state = AppState(demo: ProcessInfo.processInfo.arguments.contains("--demo") || ProcessInfo.processInfo.arguments.contains("--render") || Bundle.main.bundleIdentifier == "local.takt.demo")
+    let state = AppState(demo: ProcessInfo.processInfo.arguments.contains("--demo") || ProcessInfo.processInfo.arguments.contains("--render") || (Bundle.main.bundleIdentifier == "local.takt.demo" || Bundle.main.bundleIdentifier == "local.takt.focus-preview"))
     private var mainWindow: NSWindow?
     private var settingsWindow: NSWindow?
     private var quickPanel: KeyPanel?
@@ -88,6 +88,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         add("Новая задача", to: file, action: #selector(quickAction), key: "n")
         add("Новая заметка", to: file, action: #selector(noteAction), key: "d")
         add("Главное окно", to: file, action: #selector(mainAction), key: "0")
+        if state.isDemo {
+            file.addItem(.separator())
+            add("Показать тестовое уведомление", to: file, action: #selector(demoNotificationAction))
+        }
         let edit = NSMenu(); let editItem = NSMenuItem(title: "Правка", action: nil, keyEquivalent: ""); editItem.submenu = edit; bar.addItem(editItem)
         add("Отменить изменение записи", to: edit, action: #selector(undoAction), key: "z")
         let redo = add("Повторить изменение записи", to: edit, action: #selector(redoAction), key: "z"); redo.keyEquivalentModifierMask = [.command,.shift]
@@ -159,7 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     func showMain() {
         if mainWindow == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1440, height: 880), styleMask: [.titled,.closable,.miniaturizable,.resizable], backing: .buffered, defer: false)
-            window.title = ProcessInfo.processInfo.arguments.contains("--demo") || Bundle.main.bundleIdentifier == "local.takt.demo" ? "Толк — демонстрация, данные не сохраняются" : "Толк"
+            window.title = state.isDemo ? "Толк — демонстрация, данные не сохраняются" : "Толк"
             if state.isSyncTest { window.title = "Толк Sync Test — отдельные тестовые данные" }
             window.contentMinSize = NSSize(width: 1080, height: 640)
             window.contentView = host(MainView(state: state)); window.center(); window.delegate = self
@@ -286,7 +290,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         }
         settingsWindow?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
     }
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions { [.banner,.sound] }
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions { [.banner,.list,.sound] }
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         let action = response.actionIdentifier
         let category = response.notification.request.content.categoryIdentifier
@@ -303,6 +307,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         else { focusEdge?.show() }
     }
     @objc private func mainAction() { showMain() }
+    @objc private func demoNotificationAction() {
+        // Explicitly invoked Demo-only test. Ordinary Demo startup stays silent.
+        guard state.isDemo else { return }
+        state.errorMessage = nil
+        let task: Item
+        if let id = state.pomodoro.session?.taskID, let current = state.item(id) { task = current }
+        else {
+            var sample = Item(title: "Попробовать фокус из уведомления")
+            sample.schedule = .timed(Date().addingTimeInterval(3)); sample.timedReminderOffsets = [0]
+            state.add(sample); task = sample
+        }
+        var sample = task
+        sample.schedule = .timed(Date().addingTimeInterval(3)); sample.timedReminderOffsets = [0]
+        var snapshot = Snapshot(); snapshot.items = [sample]
+        guard let plan = NotificationPlan.events(snapshot: snapshot).first else { return }
+        let content = Reminders.content(for: plan)
+        content.subtitle = "Демонстрация · вымышленная задача"
+        Task {
+            do {
+                let center = UNUserNotificationCenter.current()
+                guard try await center.requestAuthorization(options: [.alert, .sound]) else {
+                    state.errorMessage = "Для тестового уведомления разрешите уведомления «Толк Demo» в настройках macOS."; return
+                }
+                try await center.add(UNNotificationRequest(identifier: "tolk-demo-focus", content: content,
+                    trigger: UNTimeIntervalNotificationTrigger(timeInterval: 3, repeats: false)))
+                try await Task.sleep(for: .seconds(5))
+                let settings = await center.notificationSettings()
+                let pending = await center.pendingNotificationRequests().filter { $0.identifier == "tolk-demo-focus" }.count
+                let delivered = await center.deliveredNotifications().filter { $0.request.identifier == "tolk-demo-focus" }.count
+                // Aggregate diagnostics for this explicitly requested Demo test only.
+                let status = ["authorization": settings.authorizationStatus.rawValue,
+                              "alerts": settings.alertSetting.rawValue,
+                              "center": settings.notificationCenterSetting.rawValue,
+                              "pending": pending, "delivered": delivered]
+                try JSONSerialization.data(withJSONObject: status, options: .sortedKeys)
+                    .write(to: URL(fileURLWithPath: "/private/tmp/tolk-demo-notification-status.json"), options: .atomic)
+            } catch { state.errorMessage = "Не удалось показать тестовое уведомление: \(error.localizedDescription)" }
+        }
+    }
     @objc private func quickAction() { openQuick(date: nil) }
     @objc private func noteAction() { openSticky(id: nil) }
     @objc private func settingsAction() { openSettings() }
