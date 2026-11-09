@@ -35,6 +35,7 @@ final class FocusEdgeController {
     private(set) var panel: NSPanel?
     private var screen: NSScreen?
     private var collapseTask: Task<Void, Never>?
+    private var expirationTask: Task<Void, Never>?
     private var enabled: Bool
 
     init(state: AppState, defaults: UserDefaults? = nil) {
@@ -42,7 +43,8 @@ final class FocusEdgeController {
         enabled = defaults?.object(forKey: "focusEdgeEnabled") as? Bool ?? true
     }
     func sync() {
-        guard state.pomodoro.session != nil, enabled else {
+        expirationTask?.cancel(); expirationTask = nil
+        guard let session = state.pomodoro.session, session.seconds(at: Date()) > 0, enabled else {
             collapseTask?.cancel(); presentation.expanded = false; panel?.orderOut(nil); return
         }
         if panel == nil {
@@ -61,6 +63,14 @@ final class FocusEdgeController {
         }
         layout()
         panel?.orderFrontRegardless()
+        if let deadline = session.deadline {
+            expirationTask = Task { [weak self] in
+                do { try await Task.sleep(for: .seconds(max(0, deadline.timeIntervalSinceNow))) }
+                catch { return }
+                guard !Task.isCancelled else { return }
+                self?.sync()
+            }
+        }
     }
     func show() { enabled = true; defaults?.set(true, forKey: "focusEdgeEnabled"); sync() }
     func hide() {
