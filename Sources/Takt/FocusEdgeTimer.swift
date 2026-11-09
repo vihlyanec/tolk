@@ -5,7 +5,7 @@ import TaktCore
 
 /// Anchored to the right edge; expanding keeps the pointer inside the window.
 enum FocusEdgeGeometry {
-    static let compact = NSSize(width: 84, height: 38)
+    static let compact = NSSize(width: 72, height: 72)
     static let expanded = NSSize(width: 244, height: 116)
     static func frame(in screen: NSRect, expanded: Bool, fraction: Double = 0.60) -> NSRect {
         let size = expanded ? self.expanded : compact
@@ -13,6 +13,34 @@ enum FocusEdgeGeometry {
         let center = screen.minY + screen.height * position
         let y = max(screen.minY, min(screen.maxY - size.height, center - size.height / 2))
         return NSRect(x: screen.maxX - size.width, y: y, width: size.width, height: size.height)
+    }
+}
+
+/// The centre counts remaining minutes; the head completes one clockwise lap
+/// per minute. Both derive from the session deadline, never accumulated ticks.
+nonisolated struct FocusEdgeDialReading {
+    let minutes: Int
+    let headDegrees: Double
+    init(remaining: TimeInterval) {
+        let remaining = remaining.isFinite ? max(0, remaining) : 0
+        minutes = Int(ceil(remaining / 60))
+        let second = (60 - remaining.truncatingRemainder(dividingBy: 60)).truncatingRemainder(dividingBy: 60)
+        headDegrees = second * 6 - 90
+    }
+}
+
+nonisolated private struct FocusEdgeOutline: InsettableShape {
+    var expanded: Bool
+    var inset: CGFloat = 0
+    func path(in rect: CGRect) -> Path {
+        let rect = rect.insetBy(dx: inset, dy: inset)
+        if expanded {
+            return UnevenRoundedRectangle(topLeadingRadius: max(0, 14 - inset), bottomLeadingRadius: max(0, 14 - inset)).path(in: rect)
+        }
+        return Circle().path(in: rect)
+    }
+    func inset(by amount: CGFloat) -> Self {
+        var copy = self; copy.inset += amount; return copy
     }
 }
 
@@ -30,21 +58,30 @@ private final class FocusEdgeHost: NSHostingView<AnyView> {
 
 final class FocusEdgeController {
     private let state: AppState
-    private let defaults: UserDefaults?
     let presentation = FocusEdgePresentation()
     private(set) var panel: NSPanel?
     private var screen: NSScreen?
     private var collapseTask: Task<Void, Never>?
     private var expirationTask: Task<Void, Never>?
-    private var enabled: Bool
+    private var hiddenSession: Pomodoro?
 
     init(state: AppState, defaults: UserDefaults? = nil) {
-        self.state = state; self.defaults = defaults
-        enabled = defaults?.object(forKey: "focusEdgeEnabled") as? Bool ?? true
+        self.state = state
+        // Previous versions persisted the close button as a global off switch.
+        // Dismissal is temporary; it must never disable future countdowns.
+        defaults?.removeObject(forKey: "focusEdgeEnabled")
     }
     func sync() {
         expirationTask?.cancel(); expirationTask = nil
-        guard let session = state.pomodoro.session, session.seconds(at: Date()) > 0, enabled else {
+        let current = state.pomodoro.session
+        if let hidden = hiddenSession, let current, hidden.taskID == current.taskID, hidden.phase == current.phase {
+            if let deadline = current.deadline {
+                if let previous = hidden.deadline {
+                    if abs(deadline.timeIntervalSince(previous)) > 0.001 { hiddenSession = nil }
+                } else { hiddenSession = nil }
+            } else { hiddenSession = current }
+        } else { hiddenSession = nil }
+        guard let session = current, session.seconds(at: Date()) > 0, hiddenSession == nil else {
             collapseTask?.cancel(); presentation.expanded = false; panel?.orderOut(nil); return
         }
         if panel == nil {
@@ -72,9 +109,9 @@ final class FocusEdgeController {
             }
         }
     }
-    func show() { enabled = true; defaults?.set(true, forKey: "focusEdgeEnabled"); sync() }
+    func show() { hiddenSession = nil; sync() }
     func hide() {
-        enabled = false; defaults?.set(false, forKey: "focusEdgeEnabled")
+        hiddenSession = state.pomodoro.session
         sync()
     }
     func hover(_ inside: Bool) {
@@ -113,10 +150,9 @@ struct FocusEdgeTimerView: View {
     var hover: (Bool) -> Void = { _ in }
     var hide: () -> Void = {}
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var contrast
-    private var shape: UnevenRoundedRectangle {
-        UnevenRoundedRectangle(topLeadingRadius: presentation.expanded ? 14 : 19, bottomLeadingRadius: presentation.expanded ? 14 : 19)
-    }
+    private var shape: FocusEdgeOutline { FocusEdgeOutline(expanded: presentation.expanded) }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -132,7 +168,7 @@ struct FocusEdgeTimerView: View {
                                     .font(.system(size: 11)).foregroundStyle(.secondary)
                                 Spacer(minLength: 0)
                                 Button(action: hide) { Image(systemName: "xmark").frame(width: 24, height: 24) }
-                                    .buttonStyle(.plain).help("Скрыть каплю, не останавливая таймер")
+                                    .buttonStyle(.plain).help("Скрыть таймер, не останавливая сеанс")
                                     .accessibilityLabel("Скрыть таймер")
                             }
                             Text(session.title).font(.system(size: 12)).lineLimit(1).help(session.title)
@@ -152,11 +188,17 @@ struct FocusEdgeTimerView: View {
                         }.padding(.horizontal, 14).padding(.vertical, 10)
                     } else {
                         Button { hover(true) } label: {
-                            Text(clock).font(.system(size: 16, weight: .medium)).monospacedDigit().foregroundStyle(timerInk)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity).contentShape(Rectangle())
+                            TimelineView(.animation(minimumInterval: 1.0 / 15,
+                                paused: session.deadline == nil || reduceMotion || previewDate != nil)) { tick in
+                                let date = previewDate ?? (reduceMotion ? context.date : tick.date)
+                                let reading = FocusEdgeDialReading(remaining: session.deadline?.timeIntervalSince(date) ?? session.remaining)
+                                FocusEdgeDial(reading: reading, paused: session.deadline == nil, ink: timerInk,
+                                              increasedContrast: contrast == .increased)
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity).contentShape(Circle())
                         }.buttonStyle(.plain)
                             .accessibilityLabel("\(session.phase == .focus ? "Фокус" : "Перерыв"), \(clock). Показать управление")
-                            .help("Наведите, чтобы управлять таймером")
+                            .help("\(clock) · Наведите, чтобы управлять таймером")
                     }
                 }
                 .frame(width: presentation.expanded ? FocusEdgeGeometry.expanded.width : FocusEdgeGeometry.compact.width,
@@ -164,12 +206,50 @@ struct FocusEdgeTimerView: View {
                 .background(Color(nsColor: .windowBackgroundColor).opacity(previewOpaque || reduceTransparency || contrast == .increased ? 1 : presentation.expanded ? 0.98 : 0.84))
                 .clipShape(shape)
                 .overlay { shape.strokeBorder(timerInk.opacity(0.50), lineWidth: 1).allowsHitTesting(false) }
-                .contentShape(Rectangle())
+                .contentShape(shape)
                 .onHover(perform: hover)
                 .onExitCommand { hover(false) }
                 .contextMenu { Button("Скрыть таймер", action: hide) }
             }
         }
+    }
+}
+
+private struct FocusEdgeDial: View {
+    let reading: FocusEdgeDialReading
+    let paused: Bool
+    let ink: Color
+    let increasedContrast: Bool
+    private let tailDegrees = 78.0
+
+    var body: some View {
+        ZStack {
+            Circle().strokeBorder(.primary.opacity(increasedContrast ? 0.25 : 0.08), lineWidth: 1)
+                .padding(6)
+            ForEach(0..<12) { tick in
+                Capsule().fill(.primary.opacity(increasedContrast ? 0.65 : 0.30))
+                    .frame(width: 1, height: tick.isMultiple(of: 3) ? 4 : 3)
+                    .offset(y: -24)
+                    .rotationEffect(.degrees(Double(tick) * 30))
+            }
+            Circle().trim(from: 0, to: tailDegrees / 360)
+                .stroke(AngularGradient(colors: [ink.opacity(0.05), ink], center: .center,
+                                        startAngle: .degrees(0), endAngle: .degrees(tailDegrees)),
+                        style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                .padding(6)
+                .rotationEffect(.degrees(reading.headDegrees - tailDegrees))
+            Circle().fill(ink).frame(width: 3.5, height: 3.5)
+                .offset(x: 30)
+                .rotationEffect(.degrees(reading.headDegrees))
+            VStack(spacing: -1) {
+                Text(reading.minutes.formatted()).font(.system(size: 24, weight: .medium))
+                    .monospacedDigit().foregroundStyle(ink)
+                HStack(spacing: 3) {
+                    if paused { Image(systemName: "pause.fill").font(.system(size: 6, weight: .bold)) }
+                    Text("мин").font(.system(size: 9, weight: .medium))
+                }.foregroundStyle(.secondary)
+            }
+        }.accessibilityHidden(true)
     }
 }
 

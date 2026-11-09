@@ -3,6 +3,18 @@ import Testing
 import TaktCore
 @testable import Takt
 
+@Test func roundTimerCountsMinutesAndSecondsAcrossTheMinuteBoundary() {
+    #expect(FocusEdgeDialReading(remaining: 1500).minutes == 25)
+    #expect(FocusEdgeDialReading(remaining: 1488).minutes == 25)
+    #expect(FocusEdgeDialReading(remaining: 1488).headDegrees == -18)
+    #expect(FocusEdgeDialReading(remaining: 1440).minutes == 24)
+    #expect(FocusEdgeDialReading(remaining: 1440).headDegrees == -90)
+    #expect(FocusEdgeDialReading(remaining: 1439.5).headDegrees == -87)
+    #expect(FocusEdgeDialReading(remaining: 0.5).minutes == 1)
+    #expect(FocusEdgeDialReading(remaining: 0).minutes == 0)
+    #expect(FocusEdgeDialReading(remaining: -1).minutes == 0)
+}
+
 @Test @MainActor func edgeTimerKeepsRightEdgeAndPointerInsideWhileExpanding() {
     for screen in [NSRect(x: 0, y: 25, width: 1440, height: 850), NSRect(x: -1920, y: 0, width: 1920, height: 1080)] {
         for position in [0.0, 0.6, 1.0, Double.nan] {
@@ -92,4 +104,55 @@ import TaktCore
     #expect(panel.isVisible && state.pomodoro.session?.deadline == nil)
     state.pomodoro.stop(); edge.sync()
     #expect(!panel.isVisible)
+}
+
+@Test @MainActor func legacyHiddenPreferenceDoesNotDisableNewTimers() throws {
+    let suite = "local.takt.tests.edge-dismissal." + UUID().uuidString
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    defaults.set(false, forKey: "focusEdgeEnabled")
+    let state = AppState(demo: true)
+    let edge = FocusEdgeController(state: state, defaults: defaults)
+    #expect(defaults.object(forKey: "focusEdgeEnabled") == nil)
+    state.pomodoro.start(Item(title: "Миграция показа"))
+    edge.sync()
+    let panel = try #require(edge.panel)
+    defer { panel.orderOut(nil) }
+    #expect(panel.isVisible)
+    edge.hide()
+    #expect(!panel.isVisible)
+    #expect(defaults.object(forKey: "focusEdgeEnabled") == nil)
+    let reopened = FocusEdgeController(state: state, defaults: defaults)
+    reopened.sync()
+    defer { reopened.panel?.orderOut(nil) }
+    #expect(reopened.panel?.isVisible == true)
+    state.pomodoro.stop(); edge.sync(); reopened.sync()
+}
+
+@Test @MainActor func dismissingCurrentTimerDoesNotDisableResumeRestartOrOtherTasks() throws {
+    let state = AppState(demo: true)
+    let edge = FocusEdgeController(state: state)
+    let item = Item(title: "Скрытый сеанс")
+    state.pomodoro.start(item, now: Date().addingTimeInterval(-30)); edge.sync()
+    let panel = try #require(edge.panel)
+    defer { panel.orderOut(nil) }
+    edge.hide()
+    state.pomodoro.saveResumeNote("Следующий шаг"); edge.sync()
+    #expect(!panel.isVisible)
+    state.pomodoro.pause(); state.pomodoro.skipResumeNote(); edge.sync()
+    #expect(!panel.isVisible)
+    state.pomodoro.resume(); edge.sync()
+    #expect(panel.isVisible)
+    edge.hide()
+    state.pomodoro.start(item); edge.sync()
+    #expect(panel.isVisible)
+    edge.hide()
+    state.pomodoro.start(Item(title: "Новая задача")); edge.sync()
+    #expect(panel.isVisible)
+    edge.hide()
+    state.pomodoro.stop(); edge.sync()
+    #expect(!panel.isVisible)
+    state.pomodoro.start(item); edge.sync()
+    #expect(panel.isVisible)
+    state.pomodoro.stop(); edge.sync()
 }
