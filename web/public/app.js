@@ -1,7 +1,7 @@
-import {parseQuick} from './smart.js';
-import {dayAndTime} from './model.js';
-import * as Pomodoro from './pomodoro.js';
-import {Client, api} from './sync.js';
+import {parseQuick} from './smart.js?v=20261109';
+import {dayAndTime,scheduleFromWall} from './model.js?v=20261109';
+import * as Pomodoro from './pomodoro.js?v=20261109';
+import {Client, api} from './sync.js?v=20261109';
 const client = new Client();
 const root = document.querySelector('#app');
 const editor = document.querySelector('#editor');
@@ -34,7 +34,8 @@ const paths = {
 const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${name === 'calendar' ? '<rect x="4" y="5" width="16" height="16" rx="3"/><path d="M8 3v4m8-4v4"/><text x="12" y="17.5" text-anchor="middle" font-size="9" font-weight="600" stroke="none" fill="currentColor">' + Number(today().slice(-2)) + '</text>' : paths[name] || paths.projects}</svg>`;
 const escape = text => String(text ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const settings = () => client.records('settings')[0]?.data || {};
-const today = () => new Intl.DateTimeFormat('en-CA', {timeZone: settings().timeZone || 'Europe/Moscow', year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+const dayFormatters=new Map();
+const today = () => {const zone=settings().timeZone||'Europe/Moscow';if(!dayFormatters.has(zone))dayFormatters.set(zone,new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}));return dayFormatters.get(zone).format(new Date());};
 const dateLabel = date => new Date(date + 'T12:00:00').toLocaleDateString('ru-RU', {day:'numeric', month:'long'});
 const projects = () => client.records('project').filter(r => !r.data.deleted && !r.data.archived);
 const tags = () => client.records('tag').filter(r => !r.data.deleted);
@@ -118,7 +119,9 @@ function openListOptions() {
   editor.querySelector('#options-search').onclick = () => {editor.close(); navigate('search');};
   editor.querySelector('#options-sync').onclick = () => {editor.close(); void client.sync();};
 }
+let renderedRevision=-1,renderedAuth=false,renderedDay='';
 function render() {
+  renderedRevision=client.revision;renderedAuth=client.authRequired;renderedDay=today();
   applyTheme();
   showCompleted=settings().showCompleted ?? false;
   if (!client.account) {
@@ -138,7 +141,7 @@ function render() {
     <div class="sync-line ${problem ? 'has-status' : ''}" role="status"><span class="sync-dot ${client.state.pending.length ? 'pending' : ''}"></span><span>${escape(client.status || 'Подключаемся…')}${client.state.pending.length ? ' · в очереди: ' + client.state.pending.length : ''}</span></div>
     ${client.authRequired ? '<button class="text-button" id="reauth">Войти снова, сохранив очередь</button>' : ''}<div id="content"></div></main>
     <nav class="navigation" aria-label="Разделы">${dock.map(([id,label,symbol]) => `<button data-view="${id}" aria-label="${label}" ${view === id || (id === 'inbox' && ['projects','all'].includes(view)) ? 'aria-current="page"' : ''}>${icon(symbol)}<span>${label}</span></button>`).join('')}</nav>
-    ${!['account','focus'].includes(view) ? `<button class="add-button" id="add" aria-label="${view === 'projects' && !projectID ? 'Новый проект' : 'Новая задача'}">${icon('plus')}<span>${view === 'projects' && !projectID ? 'Проект' : notesView() ? 'Заметка' : 'Задача'}</span></button>` : ''}</div>`;
+    ${!['account','focus'].includes(view) ? `<button class="add-button" id="add" aria-label="${view === 'projects' && !projectID ? 'Новый проект' : notesView() ? 'Новая заметка' : 'Новая задача'}">${icon('plus')}<span>${view === 'projects' && !projectID ? 'Проект' : notesView() ? 'Заметка' : 'Задача'}</span></button>` : ''}</div>`;
   const content = document.querySelector('#content');
   if (view === 'tags') renderTags(content);
   else if (view === 'focus') renderFocus(content);
@@ -182,8 +185,27 @@ function renderTasks(content, all) {
   list.sort((a, b) => Number(!!a.data.completed) - Number(!!b.data.completed) || (a.data.date || '9999').localeCompare(b.data.date || '9999') || (a.data.time || '').localeCompare(b.data.time || '') || ((a.data.order ?? 100000) - (b.data.order ?? 100000)));
   content.innerHTML = `${view === 'calendar' ? `<label class="day-picker">День<input id="calendar-day" type="date" value="${day}"></label>` : ''}
     ${view === 'search' ? `<label class="search">${icon('search')}<input id="search" type="search" placeholder="Найти задачу" aria-label="Найти задачу" value="${escape(search)}"></label>` : ''}
-    ${!['search','calendar'].includes(view)?`<form id="inline-add" class="inline-capture">${icon('plus')}<input name="title" placeholder="${notesView()?'Добавить заметку…':'Добавить задачу…  12 дек в 10'}" aria-label="Быстрое добавление" required maxlength="500"><button aria-label="Добавить" type="submit">${icon('check')}</button></form>`:''}<div id="tasks" class="task-group">${list.length ? groupedRows(list) : `<div class="empty">${icon(search ? 'search' : view === 'calendar' ? 'calendar' : 'tasks')}<h3>${search ? 'Ничего не нашлось' : view === 'today' ? 'На сегодня всё спокойно' : 'Здесь пока нет задач'}</h3><p>${search ? 'Попробуйте другое слово.' : 'Нажмите плюс, чтобы записать первую.'}</p>${!search ? '<button class="text-button" id="empty-add">Добавить задачу</button>' : ''}</div>`}</div>`;
-  document.querySelector('#inline-add')?.addEventListener('submit',guarded(async e=>{e.preventDefault();const input=e.target.elements.title;const title=input.value.trim();if(!title)return;const parsed=notesView()?{title,schedule:{kind:'none'},priority:0,duration:30,tagIDs:[],projectID:'',warnings:[]}:parseQuick(title,{projects:projects(),tags:tags(),zone:settings().timeZone||'Europe/Moscow'});if(!parsed.title)throw new Error('Введите название задачи.');const warnings=parsed.warnings;delete parsed.warnings;if(!parsed.projectID && view==='projects')parsed.projectID=projectID;if(parsed.schedule.kind==='none'&&view==='today')parsed.schedule={kind:'day',day:today()};await client.mutate('task',crypto.randomUUID(),{...parsed,itemKind:notesView()?'note':'task',completed:false,deleted:false});if(warnings.length)notify(warnings.join('. '));input.value='';render();document.querySelector('#inline-add input')?.focus();}));
+    ${!['search','calendar'].includes(view)?`<form id="inline-add" class="inline-capture">${icon('plus')}<input name="title" placeholder="${notesView()?'Добавить заметку…':'Добавить задачу…  12 дек в 10'}" aria-label="Быстрое добавление" required maxlength="500"><button aria-label="Добавить" type="submit">${icon('check')}</button></form><p id="inline-recognition" class="inline-recognition" role="status" aria-live="polite" hidden></p>`:''}<div id="tasks" class="task-group">${list.length ? groupedRows(list) : `<div class="empty">${icon(search ? 'search' : view === 'calendar' ? 'calendar' : 'tasks')}<h3>${search ? 'Ничего не нашлось' : view === 'today' ? 'На сегодня всё спокойно' : 'Здесь пока нет задач'}</h3><p>${search ? 'Попробуйте другое слово.' : 'Нажмите плюс, чтобы записать первую.'}</p>${!search ? '<button class="text-button" id="empty-add">Добавить задачу</button>' : ''}</div>`}</div>`;
+  const capture=content.querySelector('#inline-add');
+  if(capture){
+    let saving=false;
+    capture.elements.title.addEventListener('input',()=>{
+      const preview=content.querySelector('#inline-recognition');
+      try{const result=parseCapture(capture.elements.title.value);preview.textContent=capturePreview(result).join(' · ');preview.hidden=!result.recognized.length;}catch(error){preview.textContent=error.message;preview.hidden=false;}
+    });
+    capture.addEventListener('submit',guarded(async e=>{
+      e.preventDefault();if(saving)return;
+      const input=capture.elements.title,original=input.value;if(!original.trim())return;
+      const {warnings,recognized,...patch}=parseCapture(original);if(!patch.title)throw new Error('Введите название задачи.');
+      saving=true;capture.querySelector('button').disabled=true;
+      try{
+        await client.mutate('task',crypto.randomUUID(),{...patch,itemKind:notesView()?'note':'task',completed:false,deleted:false});
+        const next=input.value===original?'':input.value;
+        render();const field=document.querySelector('#inline-add input');if(field){field.value=next;field.focus();field.dispatchEvent(new Event('input'));}
+        if(warnings.length)notify(warnings.join('. '));
+      }finally{saving=false;capture.querySelector('button').disabled=false;}
+    }));
+  }
   document.querySelector('#empty-add')?.addEventListener('click', () => editTask());
   content.querySelectorAll('[data-task]').forEach(b => b.onclick = () => {const record=all.find(r=>r.id===b.dataset.task);record.kind==='event'?openEvent(record):editTask(record);});
   content.querySelectorAll('[data-complete]').forEach(b => b.onclick = guarded(async () => {
@@ -211,7 +233,7 @@ function taskRow(record) {
   const task = record.data;
   const late = !task.completed && task.date && task.date < today();
   return `<article class="task-row ${task.completed ? 'completed' : ''}"><button ${task.itemKind==='note'||record.kind==='event'?'hidden':''} class="complete priority-${task.priority || 0}" data-complete="${record.id}" aria-label="${task.completed ? 'Вернуть в работу' : 'Выполнить'}: ${escape(task.title)}" aria-pressed="${!!task.completed}">${task.completed ? icon('check') : ''}</button>
-    <button class="task-body" data-task="${record.id}"><span class="task-title">${escape(task.title)}</span>${task.projectID && view !== 'projects' ? `<span class="project-label">${escape(projectName(task.projectID))}</span>` : ''}${task.priority?`<span class="priority-chip priority-${task.priority}">${icon('flag')}${['','Высокий','Средний','Низкий'][task.priority]}</span>`:''}${(task.tagIDs||[]).map(id=>tags().find(t=>t.id===id.toLowerCase())).filter(Boolean).map(t=>`<span class="tag-chip" data-tag-color="${escape(t.data.color)}">#${escape(t.data.title)}</span>`).join('')}${task.body ? `<span class="body-preview">${escape(task.body.replace(/\s+/g,' '))}</span>` : ''}${task.date ? `<span class="task-date ${late ? 'overdue' : ''}">${escape(taskDate(task))}</span>` : ''}</button></article>`;
+    <button class="task-body" data-task="${record.id}"><span class="task-title">${escape(task.title)}</span>${task.projectID && view !== 'projects' ? `<span class="project-label">${escape(projectName(task.projectID))}</span>` : ''}${task.priority?`<span class="priority-chip priority-${task.priority}">${icon('flag')}${['','Высокий','Средний','Низкий'][task.priority]}</span>`:''}${(task.tagIDs||[]).map(id=>tags().find(t=>t.id===id.toLowerCase())).filter(Boolean).map(t=>`<span class="tag-chip" data-tag-color="${escape(t.data.color)}">#${escape(t.data.title)}</span>`).join('')}${task.body ? `<span class="body-preview">${escape(task.body.slice(0,280).replace(/\s+/g,' '))}</span>` : ''}${task.date ? `<span class="task-date ${late ? 'overdue' : ''}">${escape(taskDate(task))}</span>` : ''}</button></article>`;
 }
 function renderProjects(content, tasks) {
   const list = projects();
@@ -279,14 +301,16 @@ function renderAccount(content) {
   }));
 }
 function openEditor(html, onSave) {
+  document.documentElement.classList.add('editor-open');
+  editor.classList.remove('quick-capture');
   editor.innerHTML = html;
   if (!editor.open) editor.showModal();
   editor.querySelector('[data-cancel]').onclick = () => editor.close();
   editor.querySelector('form').onsubmit = async event => {
-    event.preventDefault(); const button = event.target.querySelector('[type=submit]'); button.disabled = true;
+    event.preventDefault();if(event.target.dataset.saving)return;event.target.dataset.saving='true'; const button = event.target.querySelector('[type=submit]'); button.disabled = true;
     try {await onSave(new FormData(event.target)); if (editor.querySelector('form') === event.target) editor.close();}
     catch (error) {editor.querySelector('[role=alert]').textContent = error.message;}
-    finally {button.disabled = false;}
+    finally {delete event.target.dataset.saving;button.disabled = false;}
   };
 }
 function editProject() {
@@ -294,20 +318,82 @@ function editProject() {
     await client.mutate('project', crypto.randomUUID(), {title: form.get('title').trim(), color:'598BFF', deleted:false});
   });
 }
+function parseCapture(text) {
+  const note=notesView();
+  const result=note?{title:text.trim(),schedule:{kind:'none'},priority:0,duration:30,projectID:'',tagIDs:[],warnings:[],recognized:[]}
+    :parseQuick(text,{projects:projects(),tags:tags(),zone:settings().timeZone||'Europe/Moscow',metadata:true});
+  if(!result.projectID&&view==='projects')result.projectID=projectID;
+  if(result.schedule.kind==='none'&&['today','calendar'].includes(view))result.schedule={kind:'day',day:view==='calendar'?selectedDay||today():today()};
+  return result;
+}
+function capturePreview(result) {
+  const parts=[];
+  if(result.schedule.kind!=='none'){
+    const wall=result.schedule.kind==='timed'?dayAndTime(result.schedule.instant,settings().timeZone||'Europe/Moscow'):{date:result.schedule.day,time:''};
+    parts.push(taskDate(wall));
+  }
+  if(result.projectID)parts.push(projectName(result.projectID));
+  if(result.priority)parts.push(['','Высокий приоритет','Средний приоритет','Низкий приоритет'][result.priority]);
+  if(result.recognized.includes('duration'))parts.push(result.duration+' мин');
+  for(const id of result.tagIDs)parts.push('#'+(tags().find(t=>t.id===id)?.data.title||''));
+  return parts;
+}
+function quickCapture() {
+  const note=notesView(),draftKey='tolk-capture:'+client.account.id+':'+(note?'note':'task');
+  let draft={};try{draft=JSON.parse(sessionStorage.getItem(draftKey)||'{}');}catch{}
+  const touched=new Set(draft.touched||[]);let completed=false;
+  openEditor(`<form class="capture-form"><header class="editor-header"><button type="button" class="text-button" data-cancel>Отмена</button><h2 id="editor-title">${note?'Новая заметка':'Новая задача'}</h2><button type="submit" class="text-button capture-submit">Добавить</button></header>
+    <div class="editor-content capture-content"><label class="sr-only" for="capture-title">${note?'Название заметки':'Задача с умным вводом'}</label><textarea id="capture-title" class="title-input" name="title" rows="3" placeholder="${note?'Название заметки':'Например: Позвонить завтра в 10'}" maxlength="16000" required autofocus enterkeyhint="done">${escape(draft.title||'')}</textarea>
+    <div class="capture-recognition" role="status" aria-live="polite" aria-atomic="true"></div><p class="capture-help">${note?'Текст заметки можно добавить в деталях.':'Дата, время, /проект, #метка и !приоритет — прямо в тексте.'}</p>
+    <details class="capture-options"><summary>Дата, проект и детали</summary><div class="capture-fields"><div class="date-time"><label>Дата<input type="date" name="date" value="${escape(draft.date||'')}"></label><label>Время<input type="time" name="time" value="${escape(draft.time||'')}"></label></div><label>Проект<select name="projectID"><option value="">Входящие</option>${projects().map(p=>`<option value="${p.id}" ${p.id===draft.projectID?'selected':''}>${escape(p.data.title)}</option>`).join('')}</select></label><label>Описание<textarea name="body" rows="3" placeholder="Детали, мысли, ссылки…" maxlength="5000000">${escape(draft.body||'')}</textarea></label></div></details><p class="error" role="alert"></p></div></form>`,async(form)=>{
+      const result=resolve();if(!result.title)throw new Error('Добавьте название задачи перед датой.');
+      const {warnings,recognized,...patch}=result;
+      await client.mutate('task',crypto.randomUUID(),{...patch,body:form.get('body'),itemKind:note?'note':'task',completed:false,deleted:false});
+      completed=true;try{sessionStorage.removeItem(draftKey);}catch{}
+      if(warnings.length)notify(warnings.join('. '));
+  });
+  editor.classList.add('quick-capture');
+  const form=editor.querySelector('form'),title=form.elements.title,preview=form.querySelector('.capture-recognition');
+  function resolve(){
+    const result=parseCapture(title.value);
+    const wall=result.schedule.kind==='timed'?dayAndTime(result.schedule.instant,settings().timeZone||'Europe/Moscow'):{date:result.schedule.day||'',time:''};
+    if(touched.has('date')||touched.has('time'))result.schedule=scheduleFromWall(touched.has('date')?form.elements.date.value:wall.date,touched.has('time')?form.elements.time.value:wall.time,settings().timeZone||'Europe/Moscow');
+    if(touched.has('projectID'))result.projectID=form.elements.projectID.value;
+    return result;
+  }
+  function saveDraft(){if(completed)return;try{sessionStorage.setItem(draftKey,JSON.stringify({...Object.fromEntries(new FormData(form)),touched:[...touched]}));}catch{}}
+  function update(){
+    try{
+      const result=resolve(),parts=capturePreview(result);
+      preview.innerHTML=parts.map(v=>`<span>${escape(v)}</span>`).join('');
+      if(!parts.length)preview.textContent=note?'': 'Пока без даты · Входящие';
+      const wall=result.schedule.kind==='timed'?dayAndTime(result.schedule.instant,settings().timeZone||'Europe/Moscow'):{date:result.schedule.day||'',time:''};
+      for(const [key,value]of Object.entries({...wall,projectID:result.projectID}))if(!touched.has(key))form.elements[key].value=value;
+      form.querySelector('[role=alert]').textContent=result.warnings.join('. ');
+    }catch(error){preview.textContent='';form.querySelector('[role=alert]').textContent=error.message;}
+    form.querySelector('[type=submit]').disabled=!title.value.trim();saveDraft();
+  }
+  form.addEventListener('input',e=>{if(['date','time','projectID'].includes(e.target.name))touched.add(e.target.name);update();});
+  form.addEventListener('change',e=>{if(['date','time','projectID'].includes(e.target.name))touched.add(e.target.name);update();});
+  title.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();form.requestSubmit();}});
+  editor.addEventListener('close',saveDraft,{once:true});update();
+}
+
 function editTask(record) {
+  if(!record)return quickCapture();
   let beginFocus = false;
   const data = record?.data || {date: view === 'today' ? today() : view === 'calendar' ? selectedDay || today() : '', projectID};
   openEditor(`<form><header class="editor-header"><button type="button" class="text-button" data-cancel>Отмена</button><h2 id="editor-title">${record ? 'Задача' : 'Новая задача'}</h2><button type="submit" class="text-button">Сохранить</button></header>
     <div class="editor-content"><label class="sr-only" for="task-title">Название</label><textarea id="task-title" class="title-input" name="title" rows="2" placeholder="Что нужно сделать?" maxlength="16000" required autofocus>${escape(data.title || '')}</textarea>
-    <label>Описание<textarea name="body" rows="5" placeholder="Детали, мысли, ссылки…" maxlength="5000000">${escape(data.body || '')}</textarea></label>
+    <label>Описание<textarea name="body" rows="3" placeholder="Детали, мысли, ссылки…" maxlength="5000000">${escape(data.body || '')}</textarea></label>
     <div class="date-time"><label>Дата<input type="date" name="date" value="${escape(data.date || '')}"></label><label>Время<input type="time" name="time" value="${escape(data.time || '')}"></label></div>
     <label>Проект<select name="projectID"><option value="">Входящие</option>${projects().map(p => `<option value="${p.id}" ${p.id === data.projectID ? 'selected' : ''}>${escape(p.data.title)}</option>`).join('')}</select></label>
-    <label>Приоритет<select name="priority">${['Без приоритета','Высокий','Средний','Низкий'].map((p,i) => `<option value="${i}" ${i === (data.priority || 0) ? 'selected' : ''}>${p}</option>`).join('')}</select></label>
-    <div class="date-time"><label>Длительность, мин<input name="duration" type="number" min="1" max="10080" value="${data.duration||30}" required></label><label>Повтор<select name="recurrence">${[['none','Не повторять'],['daily','Каждый день'],['weekdays','По будням'],['weekly','Каждую неделю'],['monthly','Каждый месяц'],['intervalDays','Через несколько дней']].map(([id,title])=>`<option value="${id}" ${id===(data.recurrence||'none')?'selected':''}>${title}</option>`).join('')}</select></label></div>
-    <div class="date-time"><label>Интервал повтора, дней<input name="repeatEveryDays" type="number" min="1" max="3650" value="${data.repeatEveryDays||3}"></label><label>Напоминание<select name="customReminder"><option value="keep">${Array.isArray(data.timedReminderOffsets)?data.timedReminderOffsets.length?data.timedReminderOffsets.map(n=>n===0?'В момент задачи':`За ${n} мин`).join(', '):'Без напоминания':'Как в настройках'}</option><option value="default">Как в настройках</option><option value="none">Не напоминать</option><option value="0">В момент задачи</option><option value="5">За 5 минут</option><option value="15">За 15 минут</option><option value="30">За 30 минут</option></select></label></div>
+    <label>Приоритет<select name="priority" data-priority="${data.priority||0}">${['Без приоритета','Высокий','Средний','Низкий'].map((p,i) => `<option value="${i}" ${i === (data.priority || 0) ? 'selected' : ''}>${p}</option>`).join('')}</select></label>
+    <details class="editor-advanced"><summary>Повтор, напоминание и чек-лист</summary><div class="advanced-fields"><div class="date-time"><label>Длительность, мин<input name="duration" type="number" min="1" max="10080" value="${data.duration||30}" required></label><label>Повтор<select name="recurrence">${[['none','Не повторять'],['daily','Каждый день'],['weekdays','По будням'],['weekly','Каждую неделю'],['monthly','Каждый месяц'],['intervalDays','Через несколько дней']].map(([id,title])=>`<option value="${id}" ${id===(data.recurrence||'none')?'selected':''}>${title}</option>`).join('')}</select></label></div>
+    <div class="date-time"><label data-repeat-interval ${data.recurrence==='intervalDays'?'':'hidden'}>Интервал повтора, дней<input name="repeatEveryDays" type="number" min="1" max="3650" value="${data.repeatEveryDays||3}"></label><label>Напоминание<select name="customReminder"><option value="keep">${Array.isArray(data.timedReminderOffsets)?data.timedReminderOffsets.length?data.timedReminderOffsets.map(n=>n===0?'В момент задачи':`За ${n} мин`).join(', '):'Без напоминания':'Как в настройках'}</option><option value="default">Как в настройках</option><option value="none">Не напоминать</option><option value="0">В момент задачи</option><option value="5">За 5 минут</option><option value="15">За 15 минут</option><option value="30">За 30 минут</option></select></label></div>
     <label>Раздел<input name="section" value="${escape(data.section||'Без раздела')}" maxlength="500"></label>
     ${tags().length?`<fieldset class="tag-options"><legend>Метки</legend>${tags().map(t=>`<label><input type="checkbox" name="tags" value="${t.id}" ${(data.tagIDs||[]).some(id=>id.toLowerCase()===t.id.toLowerCase())?'checked':''}>${escape(t.data.title)}</label>`).join('')}</fieldset>`:''}
-    <label>Чек-лист · по одному пункту на строке<textarea name="checklist" rows="3">${escape((data.checklist||[]).map(c=>c.title).join('\n'))}</textarea></label>
+    <label>Чек-лист · по одному пункту на строке<textarea name="checklist" rows="3">${escape((data.checklist||[]).map(c=>c.title).join('\n'))}</textarea></label></div></details>
     <p class="error" role="alert"></p>${record && !data.completed ? '<button id="task-focus" type="button" class="secondary">Сохранить и начать фокус</button>' : ''}${record ? '<button id="delete-task" type="button" class="delete-button">Удалить задачу</button>' : ''}</div></form>`, async form => {
     const patch = Object.fromEntries(form); patch.title = patch.title.trim(); patch.priority = Number(patch.priority);
     if (!patch.title) throw new Error('Введите название задачи.');
@@ -321,6 +407,9 @@ function editTask(record) {
     if (Object.keys(patch).length) await client.mutate('task', record?.id || crypto.randomUUID(), patch, record);
     if (beginFocus) await startFocus(client.records('task').find(r => r.id === record.id));
   });
+  const recurrence=editor.querySelector('[name=recurrence]');
+  recurrence.onchange=()=>{editor.querySelector('[data-repeat-interval]').hidden=recurrence.value!=='intervalDays';};
+  const priority=editor.querySelector('[name=priority]');priority.onchange=()=>{priority.dataset.priority=priority.value;};
   document.querySelector('#task-focus')?.addEventListener('click', () => {beginFocus = true; editor.querySelector('form').requestSubmit();});
   document.querySelector('#delete-task')?.addEventListener('click', guarded(async () => {
     await client.mutate('task', record.id, {deleted:true}, record); editor.close(); notify('Задача в корзине. Восстановить можно через меню.');
@@ -426,15 +515,26 @@ function renderFocus(content) {
   });
 }
 setInterval(updateFocus, 1000);
+let pointerActive=false;
+root.addEventListener('pointerdown',()=>{pointerActive=true;},{passive:true});
+addEventListener('pointerup',()=>{pointerActive=false;},{passive:true});
+addEventListener('pointercancel',()=>{pointerActive=false;},{passive:true});
 client.addEventListener('change', () => {
   updateFocus();
+  const line=root.querySelector('.sync-line');
+  if(line){
+    line.classList.toggle('has-status',!!(client.state.pending.length||client.state.conflicts.length||client.authRequired||client.state.serverReset||client.status.startsWith('Без связи')));
+    line.querySelector('span:last-child').textContent=(client.status||'Подключаемся…')+(client.state.pending.length?' · в очереди: '+client.state.pending.length:'');
+    line.querySelector('.sync-dot').classList.toggle('pending',!!client.state.pending.length);
+  }
+  if(pointerActive)return;
   // Preserve unsaved settings and search focus while background sync updates the header.
   if (root.contains(document.activeElement) && document.activeElement.matches('input, select, textarea')) {
     const status = document.querySelector('.sync-line span:last-child');
     if (status) status.textContent = client.status;
     return;
   }
-  render();
+  if(client.revision!==renderedRevision || client.authRequired!==renderedAuth || today()!==renderedDay)render();
 });
 addEventListener('online', () => client.sync());
 addEventListener('focus', () => client.sync());
@@ -543,3 +643,17 @@ function applyTagColors(){
  el.style.setProperty('--tag-color','#'+hex);el.style.setProperty('--tag-ink','rgb('+foreground.map(n=>Math.round(n*255)).join(',')+')');
  });
 }
+
+if(window.visualViewport){
+ let viewportFrame;
+ const fitEditor=()=>{
+  cancelAnimationFrame(viewportFrame);
+  viewportFrame=requestAnimationFrame(()=>{
+   const viewport=window.visualViewport;
+   document.documentElement.style.setProperty('--visible-height',viewport.height+'px');
+   document.documentElement.style.setProperty('--keyboard-inset',Math.max(0,innerHeight-viewport.height-viewport.offsetTop)+'px');
+  });
+ };
+ visualViewport.addEventListener('resize',fitEditor,{passive:true});visualViewport.addEventListener('scroll',fitEditor,{passive:true});fitEditor();
+}
+editor.addEventListener('close',()=>document.documentElement.classList.remove('editor-open'));

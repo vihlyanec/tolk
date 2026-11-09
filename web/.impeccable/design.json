@@ -339,7 +339,18 @@
         "name": "calendar-rail-only",
         "value": "1100px"
       }
-    ]
+    ],
+    "mobileCapture": {
+      "minimumTarget": "44px",
+      "primaryTarget": "50px",
+      "sheetRadius": "20px",
+      "writingSize": "23px",
+      "pressRelease": "100ms",
+      "pressState": "instant",
+      "surface": "neutral, borderless mobile capture",
+      "layout": "short capture with live recognition and optional details",
+      "reducedMotion": "no transition"
+    }
   },
   "components": [
     {

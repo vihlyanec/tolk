@@ -1,4 +1,4 @@
-const CACHE = 'tolk-shell-v6';
+const CACHE = 'tolk-shell-v7';
 const SHELL = ['/', '/index.html', '/style.css', '/app.js', '/sync.js', '/model.js', '/smart.js', '/pomodoro.js', '/icon.svg', '/brand.png', '/icon-192.png', '/icon-512.png', '/manifest.webmanifest'];
 self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL))));
 self.addEventListener('activate', event => event.waitUntil(Promise.all([
@@ -10,9 +10,9 @@ self.addEventListener('fetch', event => {
   if (url.origin !== self.location.origin || event.request.method !== 'GET' || url.pathname.startsWith('/api/')) return;
   if (!SHELL.includes(url.pathname)) return;
   event.respondWith(fetch(event.request).then(response => {
-    if (response.ok) {const copy = response.clone(); event.waitUntil(caches.open(CACHE).then(cache => cache.put(event.request, copy)));}
+    if (response.ok) {const copy = response.clone(); event.waitUntil(caches.open(CACHE).then(cache => cache.put(url.pathname, copy)));}
     return response;
-  }).catch(() => caches.match(event.request).then(cached => cached || Response.error())));
+  }).catch(() => caches.match(url.pathname).then(cached => cached || Response.error())));
 });
 self.addEventListener('push', event => {
   let message={title:'Толк',body:'Откройте ваши задачи',url:'/'};

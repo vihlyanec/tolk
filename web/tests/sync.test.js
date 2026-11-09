@@ -24,10 +24,10 @@ globalThis.indexedDB = {open() {
   }, 0);
   return request;
 }};
-let serial = Promise.resolve();
-Object.defineProperty(globalThis, 'navigator', {value:{locks:{request(_name, work) {
-  const result = serial.then(work);
-  serial = result.catch(() => {});
+const leases = new Map();
+Object.defineProperty(globalThis, 'navigator', {value:{locks:{request(name, work) {
+  const result = (leases.get(name)||Promise.resolve()).then(work);
+  leases.set(name,result.catch(() => {}));
   return result;
 }}}, configurable:true});
 globalThis.BroadcastChannel = class {postMessage() {}};
@@ -147,4 +147,39 @@ test('server restoration freezes writes until explicit comparison', async () => 
   assert.equal(value.state.serverReset,true);assert.equal(value.state.pending.length,1);
   assert.equal(requests.length,1);
   await value.sync();assert.equal(requests.length,1);
+});
+
+test('slow sync never blocks capture and ACK preserves edits made during fetch',async()=>{
+ const value=await client();await value.mutate('task',entityID,{title:'Before request'});
+ let release,started;
+ const began=new Promise(resolve=>started=resolve);
+ let count=0;
+ globalThis.fetch=async(_url,options)=>{
+  const request=JSON.parse(options.body);requests.push(request);
+  if(++count===1){started();await new Promise(resolve=>release=resolve);}
+  return {ok:true,json:async()=>({epoch:'test-epoch',results:request.operations.map(op=>({id:op.id,accepted:true,record:{id:op.entityID,kind:op.kind,version:count,data:op.patch}})),changes:[],cursor:count,more:false})};
+ };
+ value.syncing=false;const syncing=value.sync();await began;
+ try{
+  await Promise.race([value.mutate('task',entityID,{title:'Typed while waiting'}),new Promise((_,reject)=>setTimeout(()=>reject(Error('Capture waited on network')),200))]);
+  assert.equal(value.records('task')[0].data.title,'Typed while waiting');
+ }finally{release();}
+ await syncing;
+ assert.equal(value.state.pending.length,0);assert.equal(value.records('task')[0].data.title,'Typed while waiting');
+ assert.equal(requests.length,2);
+});
+test('projection is reused on status updates and invalidated on content changes',async()=>{
+ const value=await client();await value.mutate('task',entityID,{title:'Cached'});
+ const records=value.records('task');value.changed();assert.equal(value.records('task'),records);
+ await value.mutate('task',entityID,{title:'Fresh'});assert.notEqual(value.records('task'),records);
+ assert.equal(value.records('task')[0].data.title,'Fresh');
+});
+
+test('a delayed response cannot install data into a different account',async()=>{
+ const value=await client();let release,started;
+ const began=new Promise(resolve=>started=resolve);
+ globalThis.fetch=async()=>{started();await new Promise(resolve=>release=resolve);return {ok:true,json:async()=>({epoch:'test-epoch',results:[],changes:[record(1,'Private original')],cursor:1,more:false})};};
+ value.syncing=false;const syncing=value.sync();await began;
+ await value.setAccount({id:'202a361f-63e4-47af-ab1d-66d11452cde9',name:'Different account'});release();await syncing;
+ assert.equal(value.records('task').length,0);assert.equal(value.state.cursor,0);
 });

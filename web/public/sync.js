@@ -1,4 +1,4 @@
-import {canonicalPatch, projectRecord} from './model.js';
+import {canonicalPatch, projectRecord} from './model.js?v=20261109';
 // Durable account-scoped cache and outbox. Web Locks serialize tabs, including network ACKs.
 const database = new Promise((resolve, reject) => {
   const request = indexedDB.open('tolk-web-v1', 1);
@@ -38,6 +38,7 @@ export async function api(path, body) {
 const key = record => record.kind + ':' + record.id;
 const blank = () => ({records: {}, pending: [], conflicts: [], cursor: 0, epoch: null, lastSync: null});
 const lock = work => navigator.locks.request('tolk-web-state', work);
+const networkLock = work => navigator.locks.request('tolk-web-network', work);
 export class Client extends EventTarget {
   account = null;
   state = blank();
@@ -81,21 +82,32 @@ export class Client extends EventTarget {
     this.state = this.account ? await read(this.account.id) || blank() : blank();
     this.changed();
   }
-  changed() { this.dispatchEvent(new Event('change')); }
+  revision = 0;
+  projection = null;
+  fingerprint = '';
+  changed() {
+    const fingerprint = JSON.stringify([this.account?.id,Object.entries(this.state.records).map(([id,r])=>[id,r.version]),this.state.pending.map(o=>o.id),this.state.conflicts.map(c=>c.operation.id)]);
+    if(fingerprint!==this.fingerprint){this.fingerprint=fingerprint;this.revision++;this.projection=null;}
+    this.dispatchEvent(new Event('change'));
+  }
   async persist() {
     await write(this.account.id, this.state);
     this.channel.postMessage('changed');
     this.changed();
   }
   records(kind) {
-    const all = structuredClone(this.state.records);
-    for (const op of this.state.pending) {
-      const id = op.kind + ':' + op.entityID;
-      all[id] ||= {kind: op.kind, id: op.entityID, version: 0, data: {}};
-      Object.assign(all[id].data, op.patch);
+    if(!this.projection){
+      const all = structuredClone(this.state.records);
+      for(const op of this.state.pending){
+        const id=op.kind+':'+op.entityID;
+        all[id] ||= {kind:op.kind,id:op.entityID,version:0,data:{}};
+        Object.assign(all[id].data,op.patch);
+      }
+      const zone=Object.values(all).find(r=>r.kind==='settings')?.data.timeZone||'Europe/Moscow';
+      this.projection={};
+      for(const r of Object.values(all))(this.projection[r.kind] ||= []).push(projectRecord(r,zone));
     }
-    const zone=Object.values(all).find(r=>r.kind==='settings')?.data.timeZone || 'Europe/Moscow';
-    return Object.values(all).filter(record => record.kind === kind).map(r=>projectRecord(r,zone));
+    return this.projection[kind] || [];
   }
   async mutate(kind, entityID, patch, baseline = null) {
     if (!this.account) throw new Error('Войдите в аккаунт');
@@ -113,14 +125,17 @@ export class Client extends EventTarget {
   }
   async sync() {
     if (!this.account || this.syncing || this.state.serverReset) return;
+    const syncingAccountID=this.account.id;
     this.syncing = true;
     this.status = 'Синхронизация…';
     this.changed();
     try {
-      await lock(async () => {
-        await this.reload();
+      await networkLock(async () => {
         let more = true;
         while (more) {
+          const request = await lock(async () => {
+          await this.reload();
+          if(this.account?.id!==syncingAccountID || this.state.serverReset) return null;
           const blocked = new Set(this.state.conflicts.map(c => c.operation.kind + ':' + c.operation.entityID));
           // One operation per entity in each request: conflicts stop dependent edits.
           const seen = new Set(blocked);
@@ -134,7 +149,15 @@ export class Client extends EventTarget {
             seen.add(id); bytes += size; operations.push(op);
           }
           const sentOperations=this.state.epoch?operations:[];
-          const response = await api('sync', {operations:sentOperations, cursor: this.state.cursor,epoch:this.state.epoch});
+          return {accountID:this.account.id,operations:sentOperations,cursor:this.state.cursor,epoch:this.state.epoch};
+          });
+          if(!request) break;
+          // Only the network lease spans fetch. Captures/edits keep using the short state lease.
+          const response = await api('sync', {operations:request.operations,cursor:request.cursor,epoch:request.epoch});
+          await lock(async()=>{
+          await this.reload();
+          if(this.account?.id!==request.accountID || this.state.serverReset){more=false;return;}
+          const sentOperations=request.operations;
           if (this.state.epoch && this.state.epoch !== response.epoch) throw Object.assign(new Error('Сервер восстановлен. Требуется проверка изменений.'),{serverReset:true});
           if(typeof response.epoch!=='string'||!response.epoch||!Number.isSafeInteger(response.cursor)||response.cursor<this.state.cursor||!Array.isArray(response.results)||!Array.isArray(response.changes))throw new Error('Некорректный ответ сервера. Локальная очередь сохранена.');
           // Legacy cached date/time operations are converted only after the first fresh pull.
@@ -151,7 +174,7 @@ export class Client extends EventTarget {
               this.state.records[key(record)] = record;
           };
           for (const result of response.results) {
-            const operation = operations.find(op => op.id === result.id);
+            const operation = sentOperations.find(op => op.id === result.id);
             apply(result.record);
             if (!result.accepted) this.state.conflicts.push({operation, fields: result.fields, remote: result.record});
             this.state.pending = this.state.pending.filter(op => op.id !== result.id);
@@ -162,13 +185,16 @@ export class Client extends EventTarget {
           await this.persist();
           const conflictIDs = new Set(this.state.conflicts.map(c => c.operation.kind + ':' + c.operation.entityID));
           more = response.more || this.state.pending.some(op => !conflictIDs.has(op.kind + ':' + op.entityID));
+          });
         }
       });
+      if(this.account?.id!==syncingAccountID)return;
       this.authRequired = false;
       this.status = this.state.conflicts.length ? 'Нужен выбор версии' : 'Изменения сохранены';
     } catch (error) {
+      if(this.account?.id!==syncingAccountID)return;
       if (error.status === 401) this.authRequired = true;
-      if(error.serverReset) {this.state.serverReset=true;await this.persist();}
+      if(error.serverReset) await lock(async()=>{await this.reload();this.state.serverReset=true;await this.persist();});
       this.status = error.status === 401 ? 'Нужно снова войти' : error.status ? error.message : 'Без связи · изменения на устройстве';
     } finally {
       this.syncing = false;

@@ -1,6 +1,8 @@
 // Account wire dates: a calendar day or an absolute instant, never an ambiguous clock.
+const formatters = new Map();
 export function dayAndTime(instant, zone) {
-  const parts = new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(instant * 1000));
+  if(!formatters.has(zone))formatters.set(zone,new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}));
+  const parts = formatters.get(zone).formatToParts(new Date(instant * 1000));
   const p = Object.fromEntries(parts.map(v=>[v.type,v.value]));
   return {date:`${p.year}-${p.month}-${p.day}`,time:`${p.hour}:${p.minute}`};
 }
