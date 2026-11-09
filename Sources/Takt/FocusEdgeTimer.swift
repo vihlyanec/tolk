@@ -104,6 +104,9 @@ struct FocusEdgeTimerView: View {
     var hide: () -> Void = {}
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
+    private var shape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(topLeadingRadius: presentation.expanded ? 14 : 19, bottomLeadingRadius: presentation.expanded ? 14 : 19)
+    }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -148,8 +151,9 @@ struct FocusEdgeTimerView: View {
                 }
                 .frame(width: presentation.expanded ? FocusEdgeGeometry.expanded.width : FocusEdgeGeometry.compact.width,
                        height: presentation.expanded ? FocusEdgeGeometry.expanded.height : FocusEdgeGeometry.compact.height)
-                .background(Color(nsColor: .windowBackgroundColor).opacity(previewOpaque || reduceTransparency || contrast == .increased ? 1 : presentation.expanded ? 0.98 : 0.14))
-                .clipShape(UnevenRoundedRectangle(topLeadingRadius: presentation.expanded ? 14 : 19, bottomLeadingRadius: presentation.expanded ? 14 : 19))
+                .background(Color(nsColor: .windowBackgroundColor).opacity(previewOpaque || reduceTransparency || contrast == .increased ? 1 : presentation.expanded ? 0.98 : 0.84))
+                .clipShape(shape)
+                .overlay { shape.strokeBorder(timerInk.opacity(0.50), lineWidth: 1).allowsHitTesting(false) }
                 .contentShape(Rectangle())
                 .onHover(perform: hover)
                 .onExitCommand { hover(false) }
