@@ -9,3 +9,5 @@ FocusEdgeController.sync проверяет remaining seconds и планиру�
 158 Swift tests passed в /private/tmp/tolk-focus-edge-source, scratch /private/tmp/tolk-focus-edge-build. Добавлены 3 проверки: отсутствие панели без времени, автоматическое скрытие по deadline с последующим запуском фазы, сохранение видимости на паузе после прежнего срока. В tests проверяется реальное NSPanel.isVisible; данные только in-memory Demo. git diff --check чистый.
 
 Изменение локальное. Новый релиз, установка, правка личных данных или повторное живое тестирование на заблокированном Mac не выполнялись.
+
+После отдельного разрешения «релиз» исправление опубликовано в 1.1.3/build41. Точный source b7d7573; CI42684362849 success; подписи, SDK обеих архитектур и4publicassets/latestappcast проверены. См. QA_1.1.3.md.
