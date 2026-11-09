@@ -47,6 +47,7 @@ for takt_variant in "${tolk_variants[@]}"; do
     cp Resources/Info.plist "$takt_bundle/Contents/Info.plist"
     cp Resources/BrandIcon.png "$takt_bundle/Contents/Resources/BrandIcon.png"
     cp Resources/Completion.wav "$takt_bundle/Contents/Resources/Completion.wav"
+    cp Resources/FocusStart.wav Resources/FocusEnd.wav Resources/TaskReminder.wav "$takt_bundle/Contents/Resources/"
     cp Resources/AppIcon.icns "$takt_bundle/Contents/Resources/TolkAppIcon.icns"
     # ditto preserves the framework's symlinks and original nested signatures.
     ditto --norsrc "$takt_binary_dir/Sparkle.framework" "$takt_bundle/Contents/Frameworks/Sparkle.framework"

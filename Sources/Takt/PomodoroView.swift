@@ -11,9 +11,12 @@ import TaktCore
     @ObservationIgnored var didChange: (String) -> Void = { _ in }
     private let url: URL?
     private let notificationsEnabled: Bool
+    @ObservationIgnored private let startFeedback = FocusStartFeedback()
+    @ObservationIgnored var playStartSound: () -> Void = { }
     @ObservationIgnored private var notificationTask: Task<Void, Never>?
     init(url: URL?, notificationsEnabled: Bool = true) {
         self.url = url; self.notificationsEnabled = notificationsEnabled
+        if url != nil, notificationsEnabled { playStartSound = { [startFeedback] in startFeedback.play() } }
         if let url, FileManager.default.fileExists(atPath: url.path) {
             do { session = try JSONDecoder().decode(Pomodoro.self, from: Data(contentsOf: url)) }
             catch { self.error = "Не удалось прочитать таймер. Начните новый сеанс." }
@@ -21,6 +24,7 @@ import TaktCore
     }
     func start(_ item: Item, now: Date = Date()) {
         session = Pomodoro(taskID: item.id, title: item.title, now: now); pausePrompt = false; save()
+        playStartSound()
     }
     func pause(now: Date = Date()) {
         guard let current = session, current.deadline != nil, current.seconds(at: now) > 0 else { return }
@@ -34,8 +38,16 @@ import TaktCore
     }
     func skipResumeNote() { pausePrompt = false }
 
-    func resume(now: Date = Date()) { pausePrompt = false; session?.resume(at: now); save() }
-    func next(now: Date = Date()) { session?.next(at: now); save() }
+    func resume(now: Date = Date()) {
+        let startsFocus = session?.phase == .focus && session?.deadline == nil && (session?.remaining ?? 0) > 0
+        pausePrompt = false; session?.resume(at: now); save()
+        if startsFocus { playStartSound() }
+    }
+    func next(now: Date = Date()) {
+        let finishedBreak = session.map { $0.phase != .focus && $0.seconds(at: now) == 0 } ?? false
+        session?.next(at: now); save()
+        if finishedBreak { playStartSound() }
+    }
     func stop() { session = nil; pausePrompt = false; save() }
     var sharedSession: String {
         guard let session else { return "" }
@@ -84,7 +96,7 @@ import TaktCore
                 guard allowed else { self.error = "Сигнал таймера отключён. Разрешите уведомления Толка в настройках macOS."; return }
                 let content = UNMutableNotificationContent()
                 content.title = current.phase == .focus ? "Фокус завершён" : "Перерыв завершён"
-                content.body = current.title; content.sound = .default
+                content.body = current.title; content.sound = NotificationAudio.phaseEnd(current.phase).notificationSound
                 try await center.add(UNNotificationRequest(identifier: "tolk-pomodoro", content: content,
                     trigger: UNTimeIntervalNotificationTrigger(timeInterval: max(1, deadline.timeIntervalSinceNow), repeats: false)))
             } catch { if !Task.isCancelled { self.error = "Не удалось включить сигнал таймера." } }

@@ -55,13 +55,13 @@ final class Reminders {
     static func content(for reminder: PlannedReminder) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = reminder.title; content.body = "Напоминание о задаче"
-        content.sound = UNNotificationSound(named: UNNotificationSoundName("Completion.wav"))
+        content.sound = NotificationAudio.taskReminder.notificationSound
         content.threadIdentifier = "task-" + reminder.itemID.uuidString
-        content.userInfo = ["eventKey": reminder.identifier, "itemID": reminder.itemID.uuidString, "formatVersion": 3]
+        content.userInfo = ["eventKey": reminder.identifier, "itemID": reminder.itemID.uuidString, "formatVersion": 4]
         return content
     }
     static func isCurrent(_ request: UNNotificationRequest, for reminder: PlannedReminder) -> Bool {
         request.identifier == reminder.identifier && request.content.title == reminder.title &&
-        request.content.userInfo["formatVersion"] as? Int == 3 && request.content.attachments.isEmpty
+        request.content.userInfo["formatVersion"] as? Int == 4 && request.content.attachments.isEmpty
     }
 }
