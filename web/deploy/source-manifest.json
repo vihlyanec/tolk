@@ -9,7 +9,7 @@
     "javascript": 24,
     "release_scripts": 14
   },
-  "verification": "Mobile capture polish: CUA synthetic180tasks with2s sync,375/390/desktop/themes;24JS+34Python pass; production public SHA verification pending",
+  "verification": "Mobile capture:24JS+34Python pass; CUA180synthetic tasks/2s sync,375/390/desktop/themes; all13public HTTPS resources and versioned module URLs SHA-256 match; API200",
   "sha256": {
     "public/index.html": "0b642545be60443d41a62f84eee6073c61ee949950a9711632fdda2d52bace60",
     "public/smart.js": "d0143835efea098dd40a875fbae35c9dfbf695044b4d034b6f9091dc7555ea2f",
