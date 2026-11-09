@@ -24,7 +24,7 @@ private final class FocusEdgePanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 }
-private final class FocusEdgeHost<Content: View>: NSHostingView<Content> {
+private final class FocusEdgeHost: NSHostingView<AnyView> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
@@ -55,8 +55,8 @@ final class FocusEdgeController {
             panel.hidesOnDeactivate = false; panel.becomesKeyOnlyIfNeeded = true
             panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = false
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
-            panel.contentView = FocusEdgeHost(rootView: FocusEdgeTimerView(state: state, presentation: presentation,
-                hover: { [weak self] in self?.hover($0) }, hide: { [weak self] in self?.hide() }))
+            panel.contentView = FocusEdgeHost(rootView: AnyView(FocusEdgeTimerView(state: state, presentation: presentation,
+                hover: { [weak self] in self?.hover($0) }, hide: { [weak self] in self?.hide() })))
             self.panel = panel
         }
         layout()
