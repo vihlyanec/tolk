@@ -112,6 +112,8 @@ class Store:
             """)
 
         with self.connection() as db:
+            from capture import setup as setup_capture
+            setup_capture(db)
             setup_push(db)
             db.execute("INSERT OR IGNORE INTO metadata VALUES('epoch',?)",(str(uuid.uuid4()),))
 

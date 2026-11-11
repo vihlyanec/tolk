@@ -183,3 +183,19 @@ test('a delayed response cannot install data into a different account',async()=>
  await value.setAccount({id:'202a361f-63e4-47af-ab1d-66d11452cde9',name:'Different account'});release();await syncing;
  assert.equal(value.records('task').length,0);assert.equal(value.state.cursor,0);
 });
+
+test('project deletion shows its tasks in Inbox offline without changing task contents', async()=>{
+  const client=new Client();
+  const account={id:'project-delete-qa',name:'QA'};
+  await client.setAccount(account);
+  client.state.records={
+    'project:p':{id:'p',kind:'project',version:1,data:{title:'Archive',archived:true}},
+    'task:t':{id:'t',kind:'task',version:1,data:{title:'Keep me',projectID:'p',section:'Stage',body:'Details',duration:75}}
+  };
+  client.state.pending=[{id:'delete-project',kind:'project',entityID:'p',base:1,patch:{deleted:true}}];
+  client.changed();
+  const task=client.records('task')[0];
+  assert.equal(task.data.projectID,'');assert.equal(task.data.section,'Без раздела');
+  assert.equal(task.data.body,'Details');assert.equal(task.data.duration,75);
+  assert.equal(client.state.records['task:t'].data.projectID,'p');
+});

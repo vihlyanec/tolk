@@ -1,4 +1,4 @@
-const CACHE = 'tolk-shell-v7';
+const CACHE = 'tolk-shell-v8';
 const SHELL = ['/', '/index.html', '/style.css', '/app.js', '/sync.js', '/model.js', '/smart.js', '/pomodoro.js', '/icon.svg', '/brand.png', '/icon-192.png', '/icon-512.png', '/manifest.webmanifest'];
 self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL))));
 self.addEventListener('activate', event => event.waitUntil(Promise.all([

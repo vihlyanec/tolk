@@ -1,4 +1,4 @@
-import {canonicalPatch, projectRecord} from './model.js?v=20261109';
+import {canonicalPatch, projectRecord} from './model.js?v=20261111';
 // Durable account-scoped cache and outbox. Web Locks serialize tabs, including network ACKs.
 const database = new Promise((resolve, reject) => {
   const request = indexedDB.open('tolk-web-v1', 1);
@@ -102,6 +102,11 @@ export class Client extends EventTarget {
         const id=op.kind+':'+op.entityID;
         all[id] ||= {kind:op.kind,id:op.entityID,version:0,data:{}};
         Object.assign(all[id].data,op.patch);
+      }
+      // Reflect server project-deletion semantics immediately, including while offline.
+      const deletedProjects=new Set(Object.values(all).filter(r=>r.kind==='project'&&r.data.deleted).map(r=>r.id.toLowerCase()));
+      for(const record of Object.values(all))if(record.kind==='task'&&deletedProjects.has((record.data.projectID||'').toLowerCase())){
+        record.data.projectID='';record.data.section='Без раздела';
       }
       const zone=Object.values(all).find(r=>r.kind==='settings')?.data.timeZone||'Europe/Moscow';
       this.projection={};

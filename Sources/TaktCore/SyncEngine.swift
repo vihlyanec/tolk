@@ -60,7 +60,7 @@ public enum SyncEngine {
         snapshot.tickTick = sync
         for remote in tasks where remote.kind != "NOTE" {
             guard !remote.id.isEmpty else { continue }
-            let projectID = inboxIDs.contains(remote.projectID) ? nil : sync.projects.first { $0.value.remote.id == remote.projectID }.flatMap { UUID(uuidString: $0.key) }
+            let projectID = inboxIDs.contains(remote.projectID) ? nil : sync.projects.first { $0.value.remote.id == remote.projectID }.flatMap { UUID(uuidString: $0.key) }.flatMap { id in snapshot.projects.contains(where: { $0.id == id }) ? id : nil }
             // A non-inbox task without a project mapping is incomplete, not a local inbox item.
             guard inboxIDs.contains(remote.projectID) || projectID != nil else { continue }
             if let key = sync.links.first(where: { $0.value.remote.id == remote.id })?.key,

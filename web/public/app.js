@@ -1,7 +1,7 @@
-import {parseQuick} from './smart.js?v=20261109';
-import {dayAndTime,scheduleFromWall} from './model.js?v=20261109';
-import * as Pomodoro from './pomodoro.js?v=20261109';
-import {Client, api} from './sync.js?v=20261109';
+import {parseQuick} from './smart.js?v=20261111';
+import {dayAndTime,scheduleFromWall} from './model.js?v=20261111';
+import * as Pomodoro from './pomodoro.js?v=20261111';
+import {Client, api} from './sync.js?v=20261111';
 const client = new Client();
 const root = document.querySelector('#app');
 const editor = document.querySelector('#editor');
@@ -273,6 +273,8 @@ function renderAccount(content) {
     <div class="integration"><strong>Push-уведомления</strong><span id="push-status">На iPhone установите Толк на экран «Домой», затем разрешите уведомления.</span><label class="check-setting"><input id="push-on-time" type="checkbox" ${(prefs.defaultTimedReminderOffsets||[]).includes(0)?'checked':''}>Напоминать в назначенное время задачи</label><button class="secondary" id="enable-push">Включить на этом устройстве</button><button class="text-button" id="disable-push">Отключить на этом устройстве</button></div>
     <p class="hint">Доступ к TickTick и Apple Календарю обслуживает ваш Mac. Их ключи остаются на устройстве.</p></section>
     ${client.state.conflicts.length ? `<section class="settings-section"><h2>Выберите версию</h2><p>Одна запись изменена на разных устройствах. Выбор применяется ко всем ожидающим правкам этой записи.</p>${client.state.conflicts.map(conflictView).join('')}</section>` : ''}
+    <section class="settings-section"><h2>Проекты и архив</h2><p class="hint">Удаление проекта сохраняет его задачи и заметки во «Входящих».</p>${client.records('project').filter(p=>!p.data.deleted).map(p=>`<div class="trash-row"><span>${escape(p.data.title)}${p.data.archived?'<small class="hint">В архиве</small>':''}</span><button class="text-button" data-archive-project="${p.id}">${p.data.archived?'Вернуть':'В архив'}</button><button class="text-button delete-button" data-delete-project="${p.id}">Удалить</button></div>`).join('')||'<p class="hint">Проектов пока нет.</p>'}</section>
+    <section class="settings-section" id="capture-access"><h2>Быстрая команда iPhone</h2><p>Добавляйте задачи через «Команды», без открытия веба.</p><p class="hint">Скачайте команду, создайте ключ и вставьте его в первый блок «Текст». Ключ добавляет задачи и получает названия проектов и тегов. Список задач ему недоступен.</p><p><a class="text-button" href="/tolk-add-task.shortcut" download="Добавить в Толк.shortcut">Скачать команду</a></p><button class="secondary" id="capture-create">Создать ключ</button><div id="capture-keys" aria-live="polite"></div></section>
     <section class="settings-section" id="trash-section"><h2>Корзина</h2>${trash.length ? trash.map(task => `<div class="trash-row"><span>${escape(task.data.title)}</span><button class="text-button" data-restore="${task.id}">Восстановить</button></div>`).join('') : '<p class="hint">Удалённых задач пока нет. Здесь их можно будет восстановить.</p>'}</section>
     <section class="settings-section"><h2>Об этой версии</h2><p class="hint">Общие задачи, заметки, проекты и настройки. Подключите этот аккаунт в приложении на Mac: Настройки → Аккаунт.</p>
     <button class="secondary" id="retry-sync">Синхронизировать сейчас</button><button class="text-button" id="logout">Выйти из аккаунта</button></section>`;
@@ -293,6 +295,28 @@ function renderAccount(content) {
   document.querySelector('#disable-push').onclick=guarded(disablePush);
   document.querySelector('#retry-sync').onclick = () => client.sync();
   void showDevices(content).catch(()=>{});
+  void showCaptureKeys(content).catch(error=>{const target=content.querySelector('#capture-keys');if(target)target.textContent=error.message;});
+  content.querySelector('#capture-create').onclick=guarded(async event=>{
+    const button=event.currentTarget, accountID=client.account.id;
+    button.disabled=true;
+    try {
+      const result=await api('capture/token',{name:'Команда iPhone'});
+      if(!content.isConnected||client.account?.id!==accountID)return;
+      openEditor(`<form><header class="editor-header"><button type="button" data-cancel class="text-button">Закрыть</button><h2 id="editor-title">Ключ команды</h2></header><div class="editor-content"><p>Скопируйте ключ в первый блок «Текст» скачанной команды. Он показывается один раз.</p><label>Ключ добавления<textarea id="capture-token" rows="3" readonly spellcheck="false" autocapitalize="none">${escape(result.token)}</textarea></label><button id="capture-copy" class="secondary" type="button">Скопировать ключ</button><p class="hint">Отозвать ключ можно в настройках Толка.</p></div></form>`,async()=>{});
+      document.querySelector('#capture-copy').onclick=guarded(async()=>{await navigator.clipboard.writeText(result.token);notify('Ключ скопирован');});
+      await showCaptureKeys(content);
+    } finally {button.disabled=false;}
+  });
+  content.querySelectorAll('[data-archive-project]').forEach(button=>button.onclick=guarded(async()=>{
+    const record=client.records('project').find(p=>p.id===button.dataset.archiveProject);
+    if(record)await client.mutate('project',record.id,{archived:!record.data.archived},record);
+  }));
+  content.querySelectorAll('[data-delete-project]').forEach(button=>button.onclick=guarded(async()=>{
+    const record=client.records('project').find(p=>p.id===button.dataset.deleteProject);
+    if(!record||!confirm(`Удалить проект «${record.data.title}»? Его задачи и заметки сохранятся во «Входящих».`))return;
+    await client.mutate('project',record.id,{deleted:true},record);
+    notify('Проект удалён. Задачи сохраняются во Входящих.');
+  }));
 
   document.querySelector('#logout').onclick = guarded(async () => {await client.logout(); render();});
   content.querySelectorAll('[data-resolve]').forEach(b => b.onclick = guarded(() => client.resolve(b.dataset.resolve, b.dataset.local === 'true')));
@@ -657,3 +681,14 @@ if(window.visualViewport){
  visualViewport.addEventListener('resize',fitEditor,{passive:true});visualViewport.addEventListener('scroll',fitEditor,{passive:true});fitEditor();
 }
 editor.addEventListener('close',()=>document.documentElement.classList.remove('editor-open'));
+
+async function showCaptureKeys(content) {
+  const accountID=client.account?.id, result=await api('capture/tokens',{});
+  if(!content.isConnected||client.account?.id!==accountID)return;
+  const target=content.querySelector('#capture-keys');if(!target)return;
+  target.innerHTML=result.tokens.map(key=>`<div class="trash-row"><span>${escape(key.name)}<small class="hint">${key.seen?'Последнее добавление: '+escape(new Date(key.seen*1000).toLocaleString('ru-RU')):'Ещё не использован'}</small></span><button class="text-button" data-capture-revoke="${key.id}">Отозвать</button></div>`).join('');
+  target.querySelectorAll('[data-capture-revoke]').forEach(button=>button.onclick=guarded(async()=>{
+    if(!confirm('Отозвать ключ? Эта команда перестанет добавлять задачи до замены ключа.'))return;
+    await api('capture/revoke',{id:button.dataset.captureRevoke});await showCaptureKeys(content);
+  }));
+}

@@ -69,7 +69,7 @@ struct SettingsView: View {
             if !state.data.projects.filter(\.archived).isEmpty {
                 Section("Архив проектов") {
                     ForEach(state.data.projects.filter(\.archived)) { project in
-                        HStack { Text(project.name); Spacer(); Button("Вернуть") { state.change { s in if let i = s.projects.firstIndex(where: { $0.id == project.id }) { s.projects[i].archived = false } } } }
+                        HStack { Text(project.name); Spacer(); Button("Вернуть") { state.change { s in if let i = s.projects.firstIndex(where: { $0.id == project.id }) { s.projects[i].archived = false } } }; Button("Удалить", role: .destructive) { state.projectDeletionInSettings = true; state.pendingProjectDeletion = project } }
                     }
                 }
             }
@@ -87,6 +87,7 @@ struct SettingsView: View {
                 if let notice = state.notice { Text(notice).foregroundStyle(Palette.accent) }
             }
         }.formStyle(.grouped).frame(width: 580, height: 690)
+            .modifier(ProjectDeletionPrompt(state: state, inSettings: true))
             .preferredColorScheme(state.data.preferences.theme == "light" ? .light : state.data.preferences.theme == "dark" ? .dark : nil)
     }
     private func exportData() {

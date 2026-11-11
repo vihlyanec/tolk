@@ -118,3 +118,6 @@ html.editor-open{overflow:hidden}
 .editor-content select[name=priority][data-priority="3"]{color:var(--accent)}
 
 @media(max-width:799px){.shell:has(.add-button) .workspace{padding-bottom:calc(154px + env(safe-area-inset-bottom))}}
+/* Project controls and capture-key metadata share the existing settings rows. */
+.trash-row small.hint{display:block;margin-top:3px}.trash-row>button{flex-shrink:0}
+#capture-token{overflow-wrap:anywhere;word-break:break-all}

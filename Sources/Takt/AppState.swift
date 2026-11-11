@@ -16,6 +16,9 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
     var scope: Scope = .all
     var selectedID: UUID?
     var calendarEditingID: UUID?
+    var projectDeletionInSettings = false
+    var pendingProjectDeletion: Project?
+    var calendarPasteTarget: Schedule?
     var pendingRecurringDeletion: Item?
     var draggingID: UUID?
     var dragOffsetMinutes = 0
@@ -348,6 +351,18 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
             }
             snapshot.preferences.timeZone = identifier
         }
+    }
+    func deleteProject(_ id: UUID) {
+        guard data.projects.contains(where: { $0.id == id }) else { return }
+        change { snapshot in
+            snapshot.projects.removeAll { $0.id == id }
+            for i in snapshot.items.indices where snapshot.items[i].projectID == id {
+                snapshot.items[i].projectID = nil
+                snapshot.items[i].section = "Без раздела"
+                snapshot.items[i].modified = Date()
+            }
+        }
+        if !data.projects.contains(where: { $0.id == id }), scope == .project(id) { scope = .inbox }
     }
     func deleteTag(_ id: UUID) {
         guard let tag = data.tags.first(where: { $0.id == id }) else { return }

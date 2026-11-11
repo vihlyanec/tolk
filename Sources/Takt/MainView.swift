@@ -42,6 +42,7 @@ struct MainView: View {
             Button("Начать новый сеанс") { if let item = state.pendingFocusTask { state.pomodoro.start(item); state.area = .focus }; state.pendingFocusTask = nil }
             Button("Отмена", role: .cancel) { state.pendingFocusTask = nil }
         } message: { Text("Текущий сеанс завершится. Новый начнётся с 25 минут.") }
+        .modifier(ProjectDeletionPrompt(state: state))
         .sheet(item: $state.sheet) { CreationSheet(state: state, kind: $0) }
         .onChange(of: state.area) { _, area in
             state.calendarEditingID = nil; state.endDrag(); state.search = ""
@@ -106,6 +107,7 @@ struct Sidebar: View {
                                     Divider()
                                     Button("Изменить проект") { state.sheet = .project(project.id) }
                                     Button("Добавить раздел") { state.sheet = .section(project.id) }
+                                    Button("Удалить", role: .destructive) { state.projectDeletionInSettings = false; state.pendingProjectDeletion = project }
                                     Button("Архивировать") { state.change { s in if let i = s.projects.firstIndex(where: { $0.id == project.id }) { s.projects[i].archived = true } }; state.scope = .all }
                                 }
                         }
@@ -305,6 +307,7 @@ struct ItemContextMenu: View {
         else {
             if item.kind == .task && !item.completed { Button("Начать фокус") { state.startFocus(item) } }
             Button("Открыть стикер") { state.showSticky(item.id) }
+            if item.kind == .task { Button("Копировать событие") { state.copyCalendarItem(item) } }
             Button("Дублировать") { var copy = item; copy.id = UUID(); copy.recurrenceSourceID = nil; copy.recurrenceOriginalDate = nil; copy.recurrenceEndDate = nil; copy.repeatParentID = nil; copy.completed = false; copy.stickyOpen = false; copy.title += " — копия"; state.add(copy) }
             if item.kind == .task {
                 Button("Снять время, сохранить дату") { state.unschedule(item.id) }
@@ -336,5 +339,23 @@ struct ProjectDropDelegate: DropDelegate {
             Task { @MainActor in _ = state.acceptProjectDrop(payload, on: projectID, after: insertAfter) }
         }
         return true
+    }
+}
+
+struct ProjectDeletionPrompt: ViewModifier {
+    @Bindable var state: AppState
+    var inSettings = false
+    func body(content: Content) -> some View {
+        content.alert("Удалить проект?", isPresented: Binding(
+            get: { state.pendingProjectDeletion != nil && state.projectDeletionInSettings == inSettings },
+            set: { if !$0 { state.pendingProjectDeletion = nil } }
+        ), presenting: state.pendingProjectDeletion) { project in
+            Button("Удалить", role: .destructive) {
+                state.deleteProject(project.id); state.pendingProjectDeletion = nil
+            }
+            Button("Отмена", role: .cancel) { state.pendingProjectDeletion = nil }
+        } message: { project in
+            Text("Проект «\(project.name)» будет удалён. Его задачи и заметки сохранятся во «Входящих». Действие можно отменить через Правка → Отменить изменение записи.")
+        }
     }
 }

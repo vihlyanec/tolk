@@ -12,11 +12,12 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from store import Invalid, Store
+import capture
 
 PUBLIC = Path(__file__).resolve().parent.parent / 'public'
 ASSETS = {name: PUBLIC / name.lstrip('/') for name in (
     '/index.html', '/app.js', '/sync.js', '/model.js', '/smart.js', '/pomodoro.js', '/style.css', '/sw.js', '/manifest.webmanifest',
-    '/icon.svg', '/brand.png', '/icon-192.png', '/icon-512.png')}
+    '/icon.svg', '/brand.png', '/icon-192.png', '/icon-512.png', '/tolk-add-task.shortcut')}
 ASSETS['/'] = PUBLIC / 'index.html'
 COOKIE = '__Host-tolk_session'
 
@@ -33,6 +34,7 @@ def create_app(store, origin, setup_secret=''):
         method = environ.get('REQUEST_METHOD', 'GET')
 
         def reply(status, data, cookie=None, mime='application/json; charset=utf-8'):
+            if path.startswith('/api/capture') and status >= 400 and isinstance(data, dict): data = {'message':data.get('error', 'Не удалось добавить задачу'), **data}
             body = json.dumps(data, ensure_ascii=False).encode() if isinstance(data, dict) else data
             headers = [('Content-Type', mime), ('Content-Length', str(len(body))),
                        ('Cache-Control', 'no-store' if path.startswith('/api/') else 'no-cache'),
@@ -62,8 +64,11 @@ def create_app(store, origin, setup_secret=''):
             return reply(404, {'error':'Не найдено'})
         if method != 'POST':
             return reply(405, {'error':'Метод не поддерживается'})
+        capture_request = path in {'/api/capture','/api/capture/options'}
         native = path in {'/api/device/start','/api/device/poll','/api/device/sync','/api/device/logout'} and not environ.get('HTTP_ORIGIN')
-        if not native and environ.get('HTTP_ORIGIN') != origin:
+        if capture_request and environ.get('HTTP_ORIGIN') not in (None, '', origin):
+            return reply(403, {'error':'Недопустимый источник запроса'})
+        if not native and not capture_request and environ.get('HTTP_ORIGIN') != origin:
             return reply(403, {'error':'Недопустимый источник запроса'})
         if environ.get('CONTENT_TYPE', '').split(';')[0] != 'application/json':
             return reply(415, {'error':'Ожидается JSON'})
@@ -100,6 +105,19 @@ def create_app(store, origin, setup_secret=''):
                     return reply(401, {'error':'Неверное имя или пароль'})
                 token, account = result
                 return reply(200, {'account':account}, f'{COOKIE}={token}; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000')
+            if capture_request:
+                remote = environ.get('HTTP_X_REAL_IP', environ.get('REMOTE_ADDR', 'unknown'))
+                with mutex:
+                    now = time.monotonic()
+                    for key in list(attempts):
+                        if not attempts[key] or attempts[key][-1] < now - 60: del attempts[key]
+                    history = attempts[(remote, 'capture')]
+                    while history and history[0] < now - 60: history.popleft()
+                    if len(history) >= 60: return reply(429, {'error':'Слишком много запросов. Подождите минуту.'})
+                    history.append(now)
+                header = environ.get('HTTP_AUTHORIZATION', '')
+                token = header[7:] if header.startswith('Bearer ') else ''
+                return reply(200, capture.options(store, token) if path == '/api/capture/options' else capture.create_task(store, token, body))
             if native:
                 header=environ.get('HTTP_AUTHORIZATION','')
                 token=header[7:] if header.startswith('Bearer ') else ''
@@ -107,6 +125,10 @@ def create_app(store, origin, setup_secret=''):
             else: account = store.account(token)
             if not account:
                 return reply(401, {'error':'Войдите в аккаунт'})
+            if path == '/api/capture/token': return reply(200, capture.issue(store, account['id'], body.get('name')))
+            if path == '/api/capture/tokens': return reply(200, {'tokens':capture.tokens(store, account['id'])})
+            if path == '/api/capture/revoke':
+                capture.revoke(store, account['id'], body.get('id')); return reply(200, {'ok':True})
             if path == '/api/logout':
                 store.logout(token)
                 return reply(200, {'ok':True}, f'{COOKIE}=; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=0')
@@ -134,6 +156,8 @@ def create_app(store, origin, setup_secret=''):
                 return reply(200, store.sync(account['id'], body.get('operations', []), body.get('cursor', 0),body.get('epoch'),native=native))
 
             return reply(404, {'error':'Не найдено'})
+        except capture.Unauthorized as error:
+            return reply(401, {'error':str(error)})
         except (Invalid, json.JSONDecodeError, ValueError) as error:
             if isinstance(error,Invalid) and str(error)=='Неизвестная исходная версия': return reply(409,{'error':'Сервер восстановлен. Сверьте версии локальных изменений.','serverReset':True,'epoch':store.epoch})
             return reply(400, {'error':str(error) if isinstance(error, Invalid) else 'Некорректный запрос'})

@@ -138,7 +138,7 @@ struct ExternalEventCard: View {
     @ViewState private var showing = false
     private var source: ExternalCalendar? { state.data.appleCalendar?.calendars.first { $0.id == event.calendarID } }
     var body: some View {
-        Button { showing = true } label: {
+        Button { state.selectedID = event.id; showing = true } label: {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Image(systemName: "calendar").font(.system(size: compact ? 9 : 11))
@@ -156,6 +156,7 @@ struct ExternalEventCard: View {
                 .contentShape(Rectangle()).clipped()
         }.buttonStyle(.plain)
             .help(event.title + " · " + (source?.name ?? "Apple Календарь") + "\nТолько просмотр")
+            .contextMenu { Button("Копировать событие") { state.copyCalendarEvent(event) } }
             .accessibilityLabel("Событие Apple Календаря: " + event.title)
             .popover(isPresented: $showing) { ExternalEventInspector(event: event, source: source, calendar: state.calendar).frame(width: 340) }
     }

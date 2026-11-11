@@ -20,14 +20,16 @@ struct CalendarView: View {
                 else { timeline }
             }.frame(minWidth: 620, maxWidth: .infinity)
                 .background(CalendarSwipeSurface(advance: advance))
+                .background(CalendarClipboardSurface(state: state))
             PlanningQueue(state: state).frame(minWidth: 280, idealWidth: 310, maxWidth: 330)
         }
         .onReceive(Timer.publish(every: 0.12, on: .main, in: .common).autoconnect()) { _ in
             if state.draggingID != nil && NSEvent.pressedMouseButtons == 0 { state.endDrag() }
         }
-        .onChange(of: state.calendarMode) { _, _ in state.endDrag(); state.calendarEditingID = nil }
-        .onChange(of: state.anchor) { _, _ in state.endDrag(); state.calendarEditingID = nil; state.syncCoordinator?.refreshApple() }
+        .onChange(of: state.calendarMode) { _, _ in state.endDrag(); state.calendarEditingID = nil; state.calendarPasteTarget = nil }
+        .onChange(of: state.anchor) { _, _ in state.endDrag(); state.calendarEditingID = nil; state.calendarPasteTarget = nil; state.syncCoordinator?.refreshApple() }
         .onAppear { state.syncCoordinator?.refreshApple() }
+        .onDisappear { state.calendarPasteTarget = nil }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if state.data.appleCalendar != nil, let sync = state.syncCoordinator {
                 HStack {
@@ -105,6 +107,7 @@ struct CalendarView: View {
                                             .background(Color(hex: state.color(item)).opacity(item.completed ? 0.18 : 0.40), in: RoundedRectangle(cornerRadius: 3))
                                             .contentShape(Rectangle())
                                             .onTapGesture { state.selectCalendar(item.id) }.onDrag { state.beginDrag(item) }
+                                            .contextMenu { ItemContextMenu(state: state, item: item) }
                                             .popover(isPresented: editorBinding(item.id)) { ItemInspector(state: state, id: item.id).frame(width: 340, height: 620) }
                                     }
                                     ForEach(state.externalEvents.filter { $0.allDay && $0.intersects(day: day, calendar: state.calendar) }) { event in
@@ -112,6 +115,8 @@ struct CalendarView: View {
                                     }
                                 }.padding(3).frame(width: dayWidth, alignment: .top).frame(minHeight: 38)
                                     .contentShape(Rectangle())
+                                    .onHover { inside in state.calendarPasteTarget = inside ? .day(day) : nil }
+                                    .contextMenu { CalendarPasteMenu(state: state, target: .day(day)) }
                                     .dropDestination(for: String.self) { strings, _ in
                                         guard let id = strings.first.flatMap(UUID.init(uuidString:)), state.item(id).map({ $0.kind == .task && !$0.deleted }) == true else { return false }
                                         state.update(id) { $0.schedule = .day(day) }; state.endDrag(); return true
@@ -157,6 +162,7 @@ struct DayColumn: View {
     let day: Date
     let startHour: Int
     @ViewState private var hoverMinute: Int?
+    @ViewState private var pasteMinute: Int?
     @GestureState private var creationRange: [Double] = []
     private var startMinute: Double { Double(startHour * 60) }
     private var height: Double { Double(state.data.preferences.endHour - startHour) * state.data.preferences.hourHeight }
@@ -175,6 +181,17 @@ struct DayColumn: View {
                 Color.clear.contentShape(Rectangle()).onTapGesture(count: 2) { point in
                     let minutes = snapped(point.y)
                     if let date = date(minutes) { state.showQuick(date) }
+                }
+                .onContinuousHover { phase in
+                    if case .active(let point) = phase, let target = date(snapped(point.y)) { pasteMinute = snapped(point.y); state.calendarPasteTarget = .timed(target) }
+                    else { state.calendarPasteTarget = nil }
+                }
+                .onTapGesture { point in
+                    if let target = date(snapped(point.y)) { state.calendarPasteTarget = .timed(target) }
+                    state.calendarEditingID = nil
+                }
+                .contextMenu {
+                    CalendarPasteMenu(state: state, target: .timed(date(pasteMinute ?? startHour * 60) ?? day))
                 }
                 .gesture(DragGesture(minimumDistance: 6)
                     .updating($creationRange) { value, range, _ in range = [value.startLocation.y, value.location.y] }
@@ -492,6 +509,7 @@ struct MonthGrid: View {
                                 HStack(spacing: 1) { CompleteButton(item: item) { state.complete(item.id) }; Text(item.title).font(.system(size: 10)).strikethrough(item.completed).foregroundStyle(item.completed ? .secondary : .primary).lineLimit(1) }
                                     .background(Color(hex: state.color(item)).opacity(item.completed ? 0.18 : 0.40), in: RoundedRectangle(cornerRadius: 3))
                                     .onTapGesture { state.selectCalendar(item.id) }.onDrag { state.beginDrag(item) }
+                                    .contextMenu { ItemContextMenu(state: state, item: item) }
                                     .popover(isPresented: Binding(get: { state.calendarEditingID == item.id }, set: { if !$0 { state.calendarEditingID = nil } })) {
                                         ItemInspector(state: state, id: item.id).frame(width: 340, height: 620)
                                     }
@@ -504,6 +522,8 @@ struct MonthGrid: View {
                             Spacer(minLength: 0)
                         }.padding(6).frame(maxWidth: .infinity, alignment: .leading).frame(height: max(80, (geometry.size.height - 28) / 6)).border(Palette.line, width: 0.5)
                             .contentShape(Rectangle()).onTapGesture(count: 2) { state.showQuick(day) }
+                            .onHover { inside in state.calendarPasteTarget = inside ? .day(day) : nil }
+                            .contextMenu { CalendarPasteMenu(state: state, target: .day(day)) }
                             .dropDestination(for: String.self) { strings, _ in
                                 guard let id = strings.first.flatMap(UUID.init(uuidString:)), state.item(id).map({ $0.kind == .task && !$0.deleted }) == true else { return false }
                                 state.update(id) { item in
