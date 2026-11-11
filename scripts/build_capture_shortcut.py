@@ -30,6 +30,11 @@ def build(origin):
         return action('downloadurl', WFURL=origin + path, WFHTTPMethod='POST', WFHTTPBodyType='JSON',
                       WFHTTPHeaders=headers, WFJSONValues=dictionary(fields))
     key=action('gettext', WFTextActionText='ВСТАВЬТЕ КЛЮЧ ИЗ НАСТРОЕК ТОЛКА')
+    options=request('/api/capture/options',{})
+    request_id=lookup(options,'requestID')
+    ready_group=str(uuid.uuid4()).upper()
+    action('conditional', WFInput={'Type':'Variable','Variable':attachment(request_id)},
+           WFCondition=100, WFControlFlowMode=0, GroupingIdentifier=ready_group)
     title=action('ask', WFAskActionPrompt='Название задачи', WFInputType='Text', WFAskActionAllowMultiline=False)
     priorities=action('list', WFItems=['Без приоритета','Высокий','Средний','Низкий'])
     priority=choose(priorities,'Приоритет')
@@ -40,19 +45,21 @@ def build(origin):
     action('setvariable',WFVariableName='Дата задачи',WFInput=attachment(empty))
     action('choosefrommenu', WFMenuItemTitle='Выбрать дату', WFControlFlowMode=1, GroupingIdentifier=group)
     date=action('ask',WFAskActionPrompt='Дата задачи',WFInputType='Date')
-    date=action('format.date',WFDate=attachment(date),WFDateFormatStyle='Custom',WFDateFormat='yyyy-MM-dd',WFISO8601IncludeTime=False)
+    date=action('format.date',WFDate=text(date),WFDateFormatStyle='Custom',WFDateFormat='Custom',
+                WFDateFormatString='yyyy-MM-dd',WFTimeFormatStyle='None')
     action('setvariable',WFVariableName='Дата задачи',WFInput=attachment(date))
     action('choosefrommenu',WFControlFlowMode=2,GroupingIdentifier=group)
-    options=request('/api/capture/options',{})
     project=choose(lookup(options,'projectNames'),'Проект · без проекта выберите Входящие')
     project=lookup(lookup(options,'projects'),project)
     tag=choose(lookup(options,'tagNames'),'Тег')
     tag=lookup(lookup(options,'tags'),tag)
-    request_id=lookup(options,'requestID')
     result=request('/api/capture',{'requestID':request_id,'title':title,'priority':priority,
                                  'date':{'Type':'Variable','VariableName':'Дата задачи'},'projectID':project,'tagID':tag})
     # Both success and error are shown; never report success before the server answers.
     action('showresult',Text=text(lookup(result,'message')))
+    action('conditional',WFControlFlowMode=1,GroupingIdentifier=ready_group)
+    action('showresult',Text=text(lookup(options,'message')))
+    action('conditional',WFControlFlowMode=2,GroupingIdentifier=ready_group)
     return {'WFWorkflowName':'Добавить в Толк','WFWorkflowClientVersion':'2700',
             'WFWorkflowMinimumClientVersion':900,'WFWorkflowMinimumClientVersionString':'900',
             'WFWorkflowIcon':{'WFWorkflowIconStartColor':0x598BFFFF,'WFWorkflowIconGlyphNumber':59511},

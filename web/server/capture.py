@@ -10,6 +10,13 @@ class Unauthorized(ValueError):
     pass
 
 
+def token_account(store, db, token):
+    row = db.execute('SELECT account FROM capture_tokens WHERE hash=?', (store.token_hash(token),)).fetchone()
+    if not row:
+        raise Unauthorized('Ключ команды недействителен. Создайте новый в настройках Толка и вставьте его в первый блок «Текст» команды.')
+    return row['account']
+
+
 def setup(db):
     db.executescript('''
         CREATE TABLE IF NOT EXISTS capture_tokens(hash TEXT PRIMARY KEY,account TEXT,name TEXT,created INTEGER,seen INTEGER);
@@ -44,10 +51,9 @@ def revoke(store, account, key):
 
 def options(store, token):
     with store.connection() as db:
-        row = db.execute('SELECT account FROM capture_tokens WHERE hash=?', (store.token_hash(token),)).fetchone()
-        if not row: raise Unauthorized('Ключ команды недействителен. Создайте новый в настройках Толка.')
+        account = token_account(store, db, token)
         projects, tags = {'Входящие': ''}, {'Без тега': ''}
-        for record in db.execute("SELECT id,kind,data FROM entities WHERE account=? AND kind IN ('project','tag')", (row['account'],)):
+        for record in db.execute("SELECT id,kind,data FROM entities WHERE account=? AND kind IN ('project','tag')", (account,)):
             data = json.loads(record['data'])
             if data.get('deleted') or data.get('archived'): continue
             if record['kind'] == 'project' and data.get('itemKind', 'task') != 'task': continue
@@ -59,9 +65,16 @@ def options(store, token):
 
 def create_task(store, token, body):
     from store import Invalid, identifier, validate
+    # A failed options request leaves old shortcuts with an empty requestID.
+    # Report the credential failure before validating the resulting form.
+    with store.connection() as db:
+        token_account(store, db, token)
     if set(body) - {'requestID', 'title', 'body', 'date', 'time', 'projectID', 'priority', 'duration', 'tagID'}:
         raise Invalid('Неподдерживаемые поля быстрого добавления')
-    request_id = identifier(body.get('requestID'))
+    try:
+        request_id = identifier(body.get('requestID'))
+    except Invalid:
+        raise Invalid('Не удалось получить идентификатор запроса. Скачайте обновлённую команду в настройках Толка.') from None
     patch = {'title': body.get('title'), 'body': body.get('body', ''), 'date': body.get('date', ''),
              'time': body.get('time', ''), 'projectID': body.get('projectID', ''),
              'priority': body.get('priority', 0), 'duration': body.get('duration', 30)}
@@ -80,9 +93,7 @@ def create_task(store, token, body):
     request = json.dumps(patch, sort_keys=True, ensure_ascii=False)
     with store.connection() as db:
         db.execute('BEGIN IMMEDIATE')
-        row = db.execute('SELECT account FROM capture_tokens WHERE hash=?', (store.token_hash(token),)).fetchone()
-        if not row: raise Unauthorized('Ключ команды недействителен. Создайте новый в настройках Толка.')
-        account = row['account']
+        account = token_account(store, db, token)
         prior = db.execute('SELECT request,result FROM capture_requests WHERE account=? AND id=?', (account, request_id)).fetchone()
         if prior:
             if prior['request'] != request: raise Invalid('Повтор запроса содержит другие данные')

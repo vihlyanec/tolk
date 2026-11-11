@@ -102,4 +102,21 @@ class CaptureTests(unittest.TestCase):
         for _ in range(60): self.assertEqual(self.request('/api/capture', body, token=self.token)['status'], 200)
         self.assertEqual(self.request('/api/capture', body, token=self.token)['status'], 429)
 
+    def test_failed_options_credentials_are_not_masked_by_empty_request_id(self):
+        for token in [None, 'invalid-shortcut-key']:
+            options = self.request('/api/capture/options', {}, token=token)
+            capture_result = self.request('/api/capture', {'requestID':'', 'title':'Не сохранять'}, token=token)
+            self.assertEqual((options['status'], capture_result['status']), (401,401))
+            self.assertEqual(options['body']['message'], capture_result['body']['message'])
+            self.assertIn('Ключ команды недействителен', capture_result['body']['message'])
+        self.assertEqual(self.store.sync(self.account['id'], [], 0)['changes'], [])
+
+    def test_capture_credentials_allow_http_optional_whitespace(self):
+        options = self.request('/api/capture/options', {}, token=self.token+' ')
+        self.assertEqual(options['status'], 200)
+        uuid.UUID(options['body']['requestID'])
+        result = self.request('/api/capture', {'requestID':options['body']['requestID'], 'title':'HTTP OWS'}, token=self.token+' ')
+        self.assertEqual(result['status'], 200)
+        self.assertEqual(len(self.store.sync(self.account['id'], [], 0)['changes']), 1)
+
 if __name__ == '__main__': unittest.main()

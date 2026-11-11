@@ -5,7 +5,7 @@
   "native_release_state": "1.1.5/build43 published Latest; installed app remains 1.1.4/build42 (read-only verification)",
   "tests": {
     "swift": 164,
-    "python": 40,
+    "python": 42,
     "javascript": 25,
     "release_scripts": 14
   },
@@ -28,16 +28,22 @@
     "server/backup.py": "470e71b0ceffd9fe43fd0b823a6c5249da872a176a4c19eeb5d79656f782d4b9",
     "server/main.py": "042c342a145c717653c4cc58f8306c7020bea85238c9e11d82cf4b663a8cefb1",
     "server/schema.py": "1bb828876fbce90e7c870381b10d1bf587a92eba7b71d8fe5238fa8a90f4c978",
-    "server/wsgi.py": "755cdc272238cce9e7471aa38fa487c5ccc3141fa85e693f2554b944e69e05a0",
+    "server/wsgi.py": "60b837cbe2d9d0d1ae6a085ca289b0962a8e7b97e1e0b7df89024040a9bee65a",
     "server/push.py": "4ead7bc320ee60560ce77451d2dd6933eb972ff949c811f2b901e2f6195c3a38",
     "Dockerfile": "e18ed6a7e5a397af9a03bba861124bf44ad3db9580e9f438f01569a2e8184199",
     "compose.yaml": "dab18e31018528dff2777cec5132a7bffe9d4d262f8d1efad8db199d6ac08d06",
     ".dockerignore": "6d474fa6b34270912c6835a2447de7063017ffd9df95b941b864449e2c2a1e01",
-    "server/capture.py": "a11d173c231cf7b53d81dab12d423158cc08babc1b8fa672edb1c8114da4e7c5",
-    "public/tolk-add-task.shortcut": "36f1e9d43c9c4fefb78d995f2c54161eba90b67f9bc7fa5382d62f2a5aaa000c"
+    "server/capture.py": "c58591eedf653bdb89077505f0897b4c1f3c2aef8c77f877d443a5332174e947",
+    "public/tolk-add-task.shortcut": "3090f97d042915b2b95399060c27e18863c1080a0242175b8434a8433c517ff1"
   },
   "sync_repair_commit": "9a7340bd538408f0f874a1fc3fcfb735564dfa10",
   "source_backup": "/opt/tolk-web-before-115-20261111.tgz",
   "database_backup": "20261111T194512053649Z.sqlite",
-  "deployment_receipt": "/opt/tolk-web-deploy-115-receipt.json"
+  "deployment_receipt": "/opt/tolk-web-deploy-115-receipt.json",
+  "capture_repair": {
+    "date": "2026-11-11",
+    "verification": "42Python tests passed; auth-first401verified production; public shortcut HTTPS SHA256 match; real macOS Shortcuts synthetic success/error branches tested; physicaliPhonepending",
+    "database_backup": "20261111T201718270164Z.sqlite",
+    "source_backup": "/opt/tolk-capture-auth-before-20261111-v2"
+  }
 }

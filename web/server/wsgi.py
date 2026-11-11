@@ -116,7 +116,7 @@ def create_app(store, origin, setup_secret=''):
                     if len(history) >= 60: return reply(429, {'error':'Слишком много запросов. Подождите минуту.'})
                     history.append(now)
                 header = environ.get('HTTP_AUTHORIZATION', '')
-                token = header[7:] if header.startswith('Bearer ') else ''
+                token = header[7:].strip() if header.startswith('Bearer ') else ''
                 return reply(200, capture.options(store, token) if path == '/api/capture/options' else capture.create_task(store, token, body))
             if native:
                 header=environ.get('HTTP_AUTHORIZATION','')
