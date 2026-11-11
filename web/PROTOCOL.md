@@ -49,3 +49,8 @@ Native HTTPS `/api/device/start` создаёт одноразовую пару 
 ## Быстрая команда iPhone
 
 Отдельные от устройств отзываемые ключи добавления и API capture описаны в SHORTCUTS.md. Они не дают читать/изменять существующие задачи. Доступны только создание новой задачи и справочники активных проектов и тегов своего аккаунта. Все записи проходят тот же журнал аккаунтной синхронизации.
+
+
+### Retrying capture credential issuance
+
+Cookie- and Origin-bound POST `/api/capture/token` accepts optional `token`: a 43-character base64url credential generated from 32 cryptographically random browser bytes. It is kept only in memory until the credential dialog closes. The server stores its hash. Repeating the same token in the same account returns the same credential without an additional row, including at the key limit; a hash owned by another account is rejected. Omission preserves server-generated credentials for legacy clients. Network retries use the same token so a lost issuance response does not discard access to the newly created credential. Existing credentials cannot be recovered from their hashes.

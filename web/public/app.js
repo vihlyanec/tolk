@@ -296,17 +296,7 @@ function renderAccount(content) {
   document.querySelector('#retry-sync').onclick = () => client.sync();
   void showDevices(content).catch(()=>{});
   void showCaptureKeys(content).catch(error=>{const target=content.querySelector('#capture-keys');if(target)target.textContent=error.message;});
-  content.querySelector('#capture-create').onclick=guarded(async event=>{
-    const button=event.currentTarget, accountID=client.account.id;
-    button.disabled=true;
-    try {
-      const result=await api('capture/token',{name:'Команда iPhone'});
-      if(!content.isConnected||client.account?.id!==accountID)return;
-      openEditor(`<form><header class="editor-header"><button type="button" data-cancel class="text-button">Закрыть</button><h2 id="editor-title">Ключ команды</h2></header><div class="editor-content"><p>Скопируйте ключ в первый блок «Текст» скачанной команды. Он показывается один раз.</p><label>Ключ добавления<textarea id="capture-token" rows="3" readonly spellcheck="false" autocapitalize="none">${escape(result.token)}</textarea></label><button id="capture-copy" class="secondary" type="button">Скопировать ключ</button><p class="hint">Отозвать ключ можно в настройках Толка.</p></div></form>`,async()=>{});
-      document.querySelector('#capture-copy').onclick=guarded(async()=>{await navigator.clipboard.writeText(result.token);notify('Ключ скопирован');});
-      await showCaptureKeys(content);
-    } finally {button.disabled=false;}
-  });
+  content.querySelector('#capture-create').onclick=guarded(openCaptureKey);
   content.querySelectorAll('[data-archive-project]').forEach(button=>button.onclick=guarded(async()=>{
     const record=client.records('project').find(p=>p.id===button.dataset.archiveProject);
     if(record)await client.mutate('project',record.id,{archived:!record.data.archived},record);
@@ -323,6 +313,45 @@ function renderAccount(content) {
   content.querySelectorAll('[data-restore]').forEach(b => b.onclick = guarded(async () => {
     await client.mutate('task', b.dataset.restore, {deleted:false}); notify('Задача восстановлена');
   }));
+}
+function openCaptureKey() {
+  const accountID=client.account.id;
+  let token=btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  openEditor(`<form><header class="editor-header"><button type="button" data-cancel class="text-button">Закрыть</button><h2 id="editor-title">Ключ команды</h2></header><div class="editor-content"><p>Скопируйте ключ в первый блок «Текст» скачанной команды. После закрытия окна посмотреть его снова нельзя.</p><label>Ключ добавления<textarea id="capture-token" rows="3" readonly spellcheck="false" autocapitalize="none" autocomplete="off" placeholder="Ключ создаётся…"></textarea></label><p id="capture-key-status" role="status" aria-live="polite">Создаём ключ…</p><button id="capture-copy" class="secondary" type="button" disabled>Скопировать ключ</button><button id="capture-retry" class="secondary" type="button" hidden>Повторить</button><p class="hint">Отозвать ключ можно в настройках Толка.</p></div></form>`,async()=>{});
+  const form=editor.querySelector('form'), field=form.querySelector('#capture-token'), status=form.querySelector('#capture-key-status');
+  const copy=form.querySelector('#capture-copy'), retry=form.querySelector('#capture-retry');
+  const current=()=>editor.open&&editor.querySelector('form')===form&&client.account?.id===accountID;
+  let pending=false;
+  form.onsubmit=event=>event.preventDefault();
+  editor.addEventListener('close',()=>{token='';field.value='';if(editor.querySelector('form')===form)form.remove();},{once:true});
+  copy.onclick=async()=>{
+    if(!current()||copy.disabled)return;
+    try {
+      await navigator.clipboard.writeText(field.value);
+      if(current())status.textContent='Ключ скопирован. Вставьте его в первый блок «Текст» команды.';
+    } catch {
+      if(current()){field.focus();field.select();status.textContent='Скопируйте выделенный ключ вручную.';}
+    }
+  };
+  const register=async()=>{
+    if(pending||!current())return;
+    pending=true;retry.disabled=true;copy.disabled=true;status.className='';status.textContent='Создаём ключ…';
+    try {
+      const result=await api('capture/token',{name:'Команда iPhone',token});
+      if(!current())return;
+      if(result.token!==token)throw new Error('Не удалось подтвердить ключ. Повторите попытку.');
+      field.value=token;copy.disabled=false;retry.hidden=true;status.textContent='Ключ готов. Скопируйте его перед закрытием окна.';
+      field.focus();field.select();
+      const content=document.querySelector('#content');
+      if(view==='account'&&content)void showCaptureKeys(content).catch(()=>{});
+    } catch(error) {
+      if(!current())return;
+      status.className='error';status.textContent=error.status?error.message:'Не удалось подтвердить создание ключа. Нажмите «Повторить» — продолжим с тем же ключом.';
+      retry.hidden=false;
+    } finally {pending=false;retry.disabled=false;}
+  };
+  retry.onclick=()=>void register();
+  void register();
 }
 function openEditor(html, onSave) {
   document.documentElement.classList.add('editor-open');

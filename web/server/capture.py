@@ -1,5 +1,6 @@
 """Revocable, append-only credentials for iPhone Shortcuts. No task-reading scope."""
 import json
+import re
 import secrets
 import time
 import uuid
@@ -24,16 +25,25 @@ def setup(db):
     ''')
 
 
-def issue(store, account, name):
+def issue(store, account, name, token=None):
     from store import Invalid
     if not isinstance(name, str) or not 1 <= len(name.strip()) <= 80:
         raise Invalid('Укажите название команды')
-    token = secrets.token_urlsafe(32)
+    if token is None:
+        token = secrets.token_urlsafe(32)
+    elif not isinstance(token, str) or not re.fullmatch(r'[A-Za-z0-9_-]{43}', token):
+        raise Invalid('Не удалось подготовить ключ. Обновите страницу и повторите.')
+    token_hash = store.token_hash(token)
     with store.connection() as db:
         db.execute('BEGIN IMMEDIATE')
+        prior = db.execute('SELECT account FROM capture_tokens WHERE hash=?', (token_hash,)).fetchone()
+        if prior:
+            if prior['account'] != account:
+                raise Invalid('Этот ключ недоступен. Обновите страницу и повторите.')
+            return {'token': token}
         if db.execute('SELECT COUNT(*) FROM capture_tokens WHERE account=?', (account,)).fetchone()[0] >= 20:
             raise Invalid('Удалите один из прежних ключей перед созданием нового')
-        db.execute('INSERT INTO capture_tokens VALUES(?,?,?,?,?)', (store.token_hash(token), account, name.strip(), int(time.time()), 0))
+        db.execute('INSERT INTO capture_tokens VALUES(?,?,?,?,?)', (token_hash, account, name.strip(), int(time.time()), 0))
     return {'token': token}
 
 

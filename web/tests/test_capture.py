@@ -119,4 +119,32 @@ class CaptureTests(unittest.TestCase):
         self.assertEqual(result['status'], 200)
         self.assertEqual(len(self.store.sync(self.account['id'], [], 0)['changes']), 1)
 
+    def test_key_issuance_retry_after_lost_response_keeps_one_hashed_credential(self):
+        import secrets
+        token=secrets.token_urlsafe(32)
+        body={'name':'iPhone retry', 'token':token}
+        first=self.request('/api/capture/token',body,web=True)
+        retry=self.request('/api/capture/token',body,web=True)
+        self.assertEqual(first['status'],200)
+        self.assertEqual(first['body'],retry['body'])
+        self.assertEqual(retry['body']['token'],token)
+        with self.store.connection() as db:
+            rows=db.execute('SELECT hash FROM capture_tokens WHERE account=?', (self.account['id'],)).fetchall()
+        self.assertEqual(len(rows),2)  # setUp key and exactly one new credential
+        self.assertNotIn(token,[row['hash'] for row in rows])
+        self.assertEqual(self.request('/api/capture/options',{},token=token)['status'],200)
+        for i in range(18):capture.issue(self.store,self.account['id'],str(i))
+        self.assertEqual(self.request('/api/capture/token',body,web=True)['status'],200)
+
+    def test_client_key_issuance_validates_format_and_account_scope(self):
+        import secrets
+        for token in ['',True,'short','x'*42,'x'*44,'!'*43]:
+            self.assertEqual(self.request('/api/capture/token',{'name':'Bad key','token':token},web=True)['status'],400)
+        token=secrets.token_urlsafe(32)
+        capture.issue(self.store,self.account['id'],'Owner',token)
+        other_id=str(uuid.uuid4())
+        from store import Invalid
+        with self.assertRaises(Invalid):capture.issue(self.store,other_id,'Other',token)
+        self.assertEqual(capture.tokens(self.store,other_id),[])
+
 if __name__ == '__main__': unittest.main()

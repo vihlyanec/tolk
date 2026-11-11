@@ -125,7 +125,7 @@ def create_app(store, origin, setup_secret=''):
             else: account = store.account(token)
             if not account:
                 return reply(401, {'error':'Войдите в аккаунт'})
-            if path == '/api/capture/token': return reply(200, capture.issue(store, account['id'], body.get('name')))
+            if path == '/api/capture/token': return reply(200, capture.issue(store, account['id'], body.get('name'), body.get('token')))
             if path == '/api/capture/tokens': return reply(200, {'tokens':capture.tokens(store, account['id'])})
             if path == '/api/capture/revoke':
                 capture.revoke(store, account['id'], body.get('id')); return reply(200, {'ok':True})

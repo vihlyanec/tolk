@@ -5,13 +5,13 @@
   "native_release_state": "1.1.5/build43 published Latest; installed app remains 1.1.4/build42 (read-only verification)",
   "tests": {
     "swift": 164,
-    "python": 42,
+    "python": 44,
     "javascript": 25,
     "release_scripts": 14
   },
   "verification": "Capture/deletion update deployed 19:46UTC; all24server/public/configSHA256 match; SQLitequick_checkok; unauthenticated/cross-origin capture boundaries pass; two verified online backups; webhealthy/pushrunning. Physical iPhone not tested. VPS IO delays persist after prior reboot; Docker started without agent restart; existing web container recovered with docker start. All14public HTTPS assets and2versionedCSS/JS URLs downloaded without auth from external Mac and VPS public address: allSHA256 match; API200. Initial external TLS timeouts recovered on bounded sequential retries.",
   "sha256": {
-    "public/index.html": "548ff8849650db67420511d6e51a7de39434d26f6244c975efccbc112ab8bd21",
+    "public/index.html": "dceb6816f8feca8ab752d74e17e395102aeda4beb1a477fba4fe0d8a20176331",
     "public/smart.js": "d0143835efea098dd40a875fbae35c9dfbf695044b4d034b6f9091dc7555ea2f",
     "public/icon-192.png": "04f185ca414f5ef27cbecfa457af82463b3e24307be9087322f68768e6877733",
     "public/sync.js": "455dcfbb6f66e091d9fcd263ed12be2c447f01aa46a2df581006258c5c54acbc",
@@ -20,20 +20,20 @@
     "public/manifest.webmanifest": "1b469f06bc6b14647987ff8a93100fe8463580fea29212e83928104a8f87c7e4",
     "public/model.js": "4ef5cc7994c9addefe77fb5ff44c1c13c5d4f2f6f959e3c3052104d51b37f465",
     "public/pomodoro.js": "6f533ba35cddc7413d10c31cd79d5c2271538a4da862d2ff3262244ebca8b7cf",
-    "public/app.js": "75a2af3eea33f3280e97122fdb61ade3b2660c0a0d3c26598904802ac5266b05",
-    "public/sw.js": "ba84f5481c03932f3275385a058a4678e0e265b4a6e643b4aeec3ecfab1efe98",
+    "public/app.js": "d5fcb9498f4f242c11b64de5e8f7b3603166733e82fe28a549658db58c0d75bf",
+    "public/sw.js": "ec08fe1fd6c8f18f3896ea0fa9716bd4be3abe35df3dfda6da2d129ed6d5cef0",
     "public/brand.png": "4563e1902c5bc33d54eff8ad59af6c241a305ef8c5c9e142a4a035bde2057ba2",
     "public/icon-512.png": "ea08ff30b8f4dabafd4d65667978018eba0bdc16002554edafa39c6e1ae10e51",
     "server/store.py": "184cefbc3418ac58020752f0b6af682f2f7091bd2a44151b836afa06604561d9",
     "server/backup.py": "470e71b0ceffd9fe43fd0b823a6c5249da872a176a4c19eeb5d79656f782d4b9",
     "server/main.py": "042c342a145c717653c4cc58f8306c7020bea85238c9e11d82cf4b663a8cefb1",
     "server/schema.py": "1bb828876fbce90e7c870381b10d1bf587a92eba7b71d8fe5238fa8a90f4c978",
-    "server/wsgi.py": "60b837cbe2d9d0d1ae6a085ca289b0962a8e7b97e1e0b7df89024040a9bee65a",
+    "server/wsgi.py": "0fd34a4fdf44907ddbf1a4487e75c5abbdab41102a37feb1fcbcfd99e1134e0b",
     "server/push.py": "4ead7bc320ee60560ce77451d2dd6933eb972ff949c811f2b901e2f6195c3a38",
     "Dockerfile": "e18ed6a7e5a397af9a03bba861124bf44ad3db9580e9f438f01569a2e8184199",
     "compose.yaml": "dab18e31018528dff2777cec5132a7bffe9d4d262f8d1efad8db199d6ac08d06",
     ".dockerignore": "6d474fa6b34270912c6835a2447de7063017ffd9df95b941b864449e2c2a1e01",
-    "server/capture.py": "c58591eedf653bdb89077505f0897b4c1f3c2aef8c77f877d443a5332174e947",
+    "server/capture.py": "f4958aa5d9eed860884116513a9994e10e3cfd796c920c7ba20b6f1afa0a7ea6",
     "public/tolk-add-task.shortcut": "3090f97d042915b2b95399060c27e18863c1080a0242175b8434a8433c517ff1"
   },
   "sync_repair_commit": "9a7340bd538408f0f874a1fc3fcfb735564dfa10",
@@ -45,5 +45,14 @@
     "verification": "42Python tests passed; auth-first401verified production; public shortcut HTTPS SHA256 match; real macOS Shortcuts synthetic success/error branches tested; physicaliPhonepending",
     "database_backup": "20261111T201718270164Z.sqlite",
     "source_backup": "/opt/tolk-capture-auth-before-20261111-v2"
+  },
+  "capture_key_display": {
+    "date": "2026-11-11",
+    "database_backup": "20261111T204241485592Z.sqlite",
+    "source_backup": "/opt/tolk-key-display-before-20261111",
+    "receipt": "/opt/tolk-key-display-20261111-receipt.json",
+    "verification": "44Python+25JS pass; synthetic browser lost-response retry2requests/1key; background rerender during issuance preserves dialog/key; desktop1280dark/mobile390light; physicaliPhone not tested",
+    "app_version": "20261111-key-display",
+    "service_worker": "v9"
   }
 }
