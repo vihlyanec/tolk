@@ -37,7 +37,6 @@ struct MainView: View {
         } message: { item in
             Text("«\(item.title)»: можно удалить только этот повтор или его и все последующие. Предыдущие задачи сохранятся.")
         }
-        .sheet(isPresented: Binding(get: { state.pomodoro.pausePrompt }, set: { state.pomodoro.pausePrompt = $0 })) { PomodoroPauseNote(state: state) }
         .alert("Переключить задачу фокуса?", isPresented: Binding(get: { state.pendingFocusTask != nil }, set: { if !$0 { state.pendingFocusTask = nil } })) {
             Button("Начать новый сеанс") { if let item = state.pendingFocusTask { state.pomodoro.start(item); state.area = .focus }; state.pendingFocusTask = nil }
             Button("Отмена", role: .cancel) { state.pendingFocusTask = nil }

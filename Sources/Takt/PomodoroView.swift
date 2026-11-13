@@ -5,7 +5,7 @@ import TaktCore
 
 @Observable final class PomodoroController {
     private(set) var session: Pomodoro?
-    var pausePrompt = false
+    private(set) var pausePrompt = false
     var pauseDraft = ""
     var error: String?
     @ObservationIgnored var didChange: (String) -> Void = { _ in }
@@ -29,15 +29,23 @@ import TaktCore
     }
     func pause(now: Date = Date()) {
         guard let current = session, current.deadline != nil, current.seconds(at: now) > 0 else { return }
-        session?.pause(at: now); save()
         pauseDraft = current.resumeNote ?? ""; pausePrompt = true
+        session?.pause(at: now); save()
+    }
+    func requestResumeNote() {
+        guard let current = session, current.deadline == nil, current.remaining > 0 else { return }
+        pauseDraft = current.resumeNote ?? ""; pausePrompt = true; didUpdate()
     }
     func saveResumeNote(_ text: String) {
+        let previous = session
         let value = String(text.prefix(2000)).trimmingCharacters(in: .whitespacesAndNewlines)
         session?.resumeNote = value.isEmpty ? nil : value
-        save(); pausePrompt = false
+        save(notify: false)
+        if error == nil { pausePrompt = false; didChange(sharedSession) }
+        else { session = previous }
+        didUpdate()
     }
-    func skipResumeNote() { pausePrompt = false }
+    func skipResumeNote() { pausePrompt = false; didUpdate() }
 
     func resume(now: Date = Date()) {
         let startsFocus = session?.phase == .focus && session?.deadline == nil && (session?.remaining ?? 0) > 0
@@ -108,17 +116,29 @@ import TaktCore
 
 struct PomodoroPauseNote: View {
     let state: AppState
+    @FocusState private var noteFocused: Bool
     var body: some View {
         @Bindable var focus = state.pomodoro
         VStack(alignment: .leading, spacing: 16) {
             Text("С чего продолжить?").font(.title2.bold())
-            Text("Таймер на паузе. Оставьте себе следующий шаг — или пропустите.").foregroundStyle(.secondary)
+            if let session = focus.session {
+                Text(session.title).foregroundStyle(.secondary).lineLimit(2)
+            }
+            Text("Таймер на паузе. Оставьте себе следующий шаг — или пропустите.")
+                .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             TextField("Например, начать с третьего пункта", text: $focus.pauseDraft, axis: .vertical)
-                .lineLimit(4...8).textFieldStyle(.roundedBorder).accessibilityLabel("С чего продолжить, необязательно")
+                .lineLimit(5...5).textFieldStyle(.roundedBorder).accessibilityLabel("С чего продолжить, необязательно")
+                .focused($noteFocused)
+                .onSubmit { focus.saveResumeNote(focus.pauseDraft) }
+            if let error = focus.error { Text(error).font(.caption).foregroundStyle(.red) }
             HStack { Button("Пропустить") { focus.skipResumeNote() }.keyboardShortcut(.cancelAction); Spacer()
                 Button("Сохранить") { focus.saveResumeNote(focus.pauseDraft) }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
             }
         }.padding(24).frame(width: 430)
+            .font(.system(size: 13)).tint(Palette.accent)
+            .background(Color(nsColor: .windowBackgroundColor))
+            .task { noteFocused = true }
+            .onExitCommand { focus.skipResumeNote() }
     }
 }
 
@@ -179,7 +199,7 @@ struct PomodoroWorkspace: View {
             if let note = focus.session?.resumeNote, !note.isEmpty { Text(note).textSelection(.enabled).fixedSize(horizontal: false, vertical: true) }
             else { Text("При паузе можно записать следующий шаг. Это необязательно.").foregroundStyle(.secondary) }
             if let session = focus.session, session.deadline == nil {
-                Button("Изменить заметку") { focus.pauseDraft = session.resumeNote ?? ""; focus.pausePrompt = true }
+                Button("Изменить заметку") { focus.requestResumeNote() }
             }
         }.frame(maxWidth: .infinity, alignment: .leading)
     }

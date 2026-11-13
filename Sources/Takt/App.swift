@@ -25,6 +25,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     private let reminders = Reminders()
     private let completionFeedback = CompletionFeedback()
     private var focusEdge: FocusEdgeController?
+    private var focusPause: FocusPauseController?
+    private var demoPauseTask: Task<Void, Never>?
     private var previousApplication: NSRunningApplication?
     private var lastShift: Bool?
     private var reminderTimer: Timer?
@@ -54,8 +56,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         state.showSticky = { [weak self] id in self?.openSticky(id: id) }
         state.showSettings = { [weak self] in self?.openSettings() }
         focusEdge = FocusEdgeController(state: state, defaults: state.isDemo ? nil : .standard)
+        focusPause = FocusPauseController(state: state)
         state.showFocusTimer = { [weak self] in self?.focusEdge?.show() }
-        state.pomodoro.didUpdate = { [weak self] in self?.focusEdge?.sync() }
+        state.pomodoro.didUpdate = { [weak self] in
+            self?.focusEdge?.sync()
+            self?.focusPause?.sync()
+        }
         focusEdge?.sync()
         reminders.reportError = { [weak self] text in self?.state.errorMessage = text }
         state.didSave = { [weak self] in self?.refreshServices(); self?.state.syncCoordinator?.localChanged(); self?.state.acceptAccountFocus(); self?.state.accountService?.changed() }
@@ -76,7 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         if mainWindow == nil { showMain() }
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showMain(); return true }
-    func applicationWillTerminate(_ notification: Notification) { state.flushQuickDraft(); state.syncCoordinator?.stop(); state.accountService?.stop(); keys?.stop(); reminderTimer?.invalidate(); todayPopover?.close() }
+    func applicationWillTerminate(_ notification: Notification) { state.flushQuickDraft(); state.syncCoordinator?.stop(); state.accountService?.stop(); keys?.stop(); reminderTimer?.invalidate(); todayPopover?.close(); demoPauseTask?.cancel() }
     private func makeMenu() {
         let bar = NSMenu()
         let app = NSMenu(); let appItem = NSMenuItem(); appItem.submenu = app; bar.addItem(appItem)
@@ -91,6 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         if state.isDemo {
             file.addItem(.separator())
             add("Показать тестовое уведомление", to: file, action: #selector(demoNotificationAction))
+            add("Проверить глобальную паузу через 15 секунд", to: file, action: #selector(demoGlobalPauseAction))
         }
         let edit = NSMenu(); let editItem = NSMenuItem(title: "Правка", action: nil, keyEquivalent: ""); editItem.submenu = edit; bar.addItem(editItem)
         add("Отменить изменение записи", to: edit, action: #selector(undoAction), key: "z")
@@ -307,6 +314,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         else { focusEdge?.show() }
     }
     @objc private func mainAction() { showMain() }
+    @objc private func demoGlobalPauseAction() {
+        guard state.isDemo else { return }
+        demoPauseTask?.cancel()
+        state.pomodoro.start(Item(title: "Подготовить план проекта"))
+        demoPauseTask = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(15)) } catch { return }
+            guard let self, !Task.isCancelled else { return }
+            let previous = NSWorkspace.shared.frontmostApplication?.processIdentifier
+            let mainWasVisible = self.mainWindow?.isVisible ?? false
+            self.state.pomodoro.pause()
+            do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
+            let report: [String: Bool] = [
+                "foregroundUnchanged": previous != nil && previous == NSWorkspace.shared.frontmostApplication?.processIdentifier,
+                "mainVisibilityUnchanged": mainWasVisible == (self.mainWindow?.isVisible ?? false),
+                "tolkInactive": !NSApp.isActive,
+                "popupVisible": self.focusPause?.panel?.isVisible == true,
+                "popupKey": self.focusPause?.panel?.isKeyWindow == true,
+                "paused": self.state.pomodoro.session?.deadline == nil
+            ]
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("tolk-demo-global-pause.json")
+            if let data = try? JSONSerialization.data(withJSONObject: report, options: .sortedKeys) {
+                try? data.write(to: url, options: .atomic)
+            }
+        }
+    }
     @objc private func demoNotificationAction() {
         // Explicitly invoked Demo-only test. Ordinary Demo startup stays silent.
         guard state.isDemo else { return }
@@ -387,6 +419,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
                 guard let png = bitmap.representation(using: .png, properties: [:]) else { return }
                 do { try png.write(to: directory.appendingPathComponent(name + ".png")) } catch { FileHandle.standardError.write(Data(error.localizedDescription.utf8)) }
             }
+        }
+        if ProcessInfo.processInfo.arguments.contains("--render-focus-pause") {
+            let date = Date(timeIntervalSince1970: 1_794_222_000)
+            state.pomodoro.start(Item(title: "Подготовить план проекта"), now: date.addingTimeInterval(-78))
+            state.pomodoro.pause(now: date)
+            state.pomodoro.pauseDraft = "Открыть второй раздел черновика и сверить сроки."
+            let editor = PomodoroPauseNote(state: state).frame(height: 340).background(Color(nsColor: .windowBackgroundColor))
+            render(editor, name: "focus-pause-popup-dark", width: 430, height: 340)
+            render(editor, name: "focus-pause-popup-light", width: 430, height: 340, scheme: .light)
+            state.pomodoro.saveResumeNote(state.pomodoro.pauseDraft)
+            let expanded = FocusEdgePresentation(); expanded.expanded = true
+            render(FocusEdgeTimerView(state: state, presentation: expanded, previewDate: date), name: "focus-pause-note-dark", width: 300, height: 196)
+            render(FocusEdgeTimerView(state: state, presentation: expanded, previewDate: date), name: "focus-pause-note-light", width: 300, height: 196, scheme: .light)
+            NSApp.terminate(nil); return
         }
         if ProcessInfo.processInfo.arguments.contains("--render-focus-edge") {
             let date = Date(timeIntervalSince1970: 1_794_222_000)

@@ -7,8 +7,9 @@ import TaktCore
 enum FocusEdgeGeometry {
     static let compact = NSSize(width: 72, height: 72)
     static let expanded = NSSize(width: 244, height: 116)
-    static func frame(in screen: NSRect, expanded: Bool, fraction: Double = 0.60) -> NSRect {
-        let size = expanded ? self.expanded : compact
+    static let expandedWithNote = NSSize(width: 300, height: 196)
+    static func frame(in screen: NSRect, expanded: Bool, fraction: Double = 0.60, hasNote: Bool = false) -> NSRect {
+        let size = expanded ? (hasNote ? expandedWithNote : self.expanded) : compact
         let position = fraction.isFinite ? min(1, max(0, fraction)) : 0.60
         let center = screen.minY + screen.height * position
         let y = max(screen.minY, min(screen.maxY - size.height, center - size.height / 2))
@@ -64,6 +65,12 @@ final class FocusEdgeController {
     private var collapseTask: Task<Void, Never>?
     private var expirationTask: Task<Void, Never>?
     private var hiddenSession: Pomodoro?
+    private var pointerInside = false
+    private var notePinned = false
+    private var hasResumeNote: Bool { !(state.pomodoro.session?.resumeNote?.isEmpty ?? true) }
+    private var shouldPinNote: Bool {
+        state.pomodoro.session?.deadline == nil && hasResumeNote && !state.pomodoro.pausePrompt
+    }
 
     init(state: AppState, defaults: UserDefaults? = nil) {
         self.state = state
@@ -82,8 +89,12 @@ final class FocusEdgeController {
             } else { hiddenSession = current }
         } else { hiddenSession = nil }
         guard let session = current, session.seconds(at: Date()) > 0, hiddenSession == nil else {
-            collapseTask?.cancel(); presentation.expanded = false; panel?.orderOut(nil); return
+            collapseTask?.cancel(); presentation.expanded = false; notePinned = false; panel?.orderOut(nil); return
         }
+        let wasPinned = notePinned
+        notePinned = shouldPinNote
+        if notePinned { collapseTask?.cancel(); presentation.expanded = true }
+        else if wasPinned { presentation.expanded = pointerInside }
         if panel == nil {
             let screen = NSScreen.main ?? NSScreen.screens.first
             self.screen = screen
@@ -115,6 +126,7 @@ final class FocusEdgeController {
         sync()
     }
     func hover(_ inside: Bool) {
+        pointerInside = inside
         collapseTask?.cancel()
         if inside { setExpanded(true) }
         else {
@@ -127,7 +139,7 @@ final class FocusEdgeController {
         }
     }
     private func setExpanded(_ expanded: Bool) {
-        presentation.expanded = expanded; layout()
+        presentation.expanded = expanded || shouldPinNote; layout()
     }
     private func layout() {
         let current = screen.flatMap { old in NSScreen.screens.first { $0 === old } } ?? NSScreen.main ?? NSScreen.screens.first
@@ -135,7 +147,7 @@ final class FocusEdgeController {
         guard let current else { return }
         // Frequent hover and countdown changes are deliberately instant, with no
         // bouncing or animated digits; this also respects Reduce Motion.
-        panel?.setFrame(FocusEdgeGeometry.frame(in: current.visibleFrame, expanded: presentation.expanded), display: true, animate: false)
+        panel?.setFrame(FocusEdgeGeometry.frame(in: current.visibleFrame, expanded: presentation.expanded, hasNote: hasResumeNote), display: true, animate: false)
         let theme = state.data.preferences.theme
         panel?.appearance = theme == "dark" ? NSAppearance(named: .darkAqua) : theme == "light" ? NSAppearance(named: .aqua) : nil
     }
@@ -153,6 +165,7 @@ struct FocusEdgeTimerView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var contrast
     private var shape: FocusEdgeOutline { FocusEdgeOutline(expanded: presentation.expanded) }
+    private var hasNote: Bool { !(state.pomodoro.session?.resumeNote?.isEmpty ?? true) }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -172,18 +185,30 @@ struct FocusEdgeTimerView: View {
                                     .accessibilityLabel("Скрыть таймер")
                             }
                             Text(session.title).font(.system(size: 12)).lineLimit(1).help(session.title)
+                            if let note = session.resumeNote, !note.isEmpty {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("С чего продолжить").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                                    Text(note).font(.system(size: 12)).lineLimit(3).help(note)
+                                }.frame(maxWidth: .infinity, alignment: .leading)
+                            }
                             HStack(spacing: 8) {
                                 if seconds == 0 {
                                     Button(session.phase == .focus ? "Начать перерыв" : "Начать фокус") { state.pomodoro.next() }
                                 } else {
                                     Button {
                                         if session.deadline == nil { state.pomodoro.resume() }
-                                        else { state.pomodoro.pause(); state.pomodoro.skipResumeNote() }
+                                        else { state.pomodoro.pause() }
                                     } label: {
                                         Label(session.deadline == nil ? "Продолжить" : "Пауза", systemImage: session.deadline == nil ? "play.fill" : "pause.fill")
                                     }
                                 }
                                 Button("Завершить") { state.pomodoro.stop() }
+                                if session.deadline == nil && seconds > 0 {
+                                    Button { state.pomodoro.requestResumeNote() } label: {
+                                        Image(systemName: "square.and.pencil")
+                                    }.help("Записать, с чего продолжить")
+                                        .accessibilityLabel("Записать, с чего продолжить")
+                                }
                             }.controlSize(.small)
                         }.padding(.horizontal, 14).padding(.vertical, 10)
                     } else {
@@ -201,8 +226,8 @@ struct FocusEdgeTimerView: View {
                             .help("\(clock) · Наведите, чтобы управлять таймером")
                     }
                 }
-                .frame(width: presentation.expanded ? FocusEdgeGeometry.expanded.width : FocusEdgeGeometry.compact.width,
-                       height: presentation.expanded ? FocusEdgeGeometry.expanded.height : FocusEdgeGeometry.compact.height)
+                .frame(width: presentation.expanded ? (hasNote ? FocusEdgeGeometry.expandedWithNote.width : FocusEdgeGeometry.expanded.width) : FocusEdgeGeometry.compact.width,
+                       height: presentation.expanded ? (hasNote ? FocusEdgeGeometry.expandedWithNote.height : FocusEdgeGeometry.expanded.height) : FocusEdgeGeometry.compact.height)
                 .background(Color(nsColor: .windowBackgroundColor).opacity(previewOpaque || reduceTransparency || contrast == .increased ? 1 : presentation.expanded ? 0.98 : 0.84))
                 .clipShape(shape)
                 .overlay { shape.strokeBorder(timerInk.opacity(0.50), lineWidth: 1).allowsHitTesting(false) }
