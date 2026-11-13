@@ -46,7 +46,11 @@ import TaktCore
     try await Task.sleep(for: .milliseconds(280))
     #expect(edge.presentation.expanded)
     edge.hover(false)
-    try await Task.sleep(for: .milliseconds(280))
+    // A busy main actor can start the delayed collapse after a fixed sleep ends.
+    let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+    while edge.presentation.expanded, ContinuousClock.now < deadline {
+        try await Task.sleep(for: .milliseconds(20))
+    }
     #expect(!edge.presentation.expanded && panel.frame.size == FocusEdgeGeometry.compact)
     let before = state.pomodoro.session
     edge.hide()

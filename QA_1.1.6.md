@@ -8,6 +8,10 @@
 
 Нативный source, notes и surface/QA документы сохранены в release commit. Точный source_commit фиксирует manifest. Подписи, universal, CI, visual ZIP comparison и публичные download hashes будут внесены после проверки.
 
+## Стабильность CI
+
+Первые два запуска CI на dd02fc8 остановились только на прежнем edgeTimerHoverCanBeInterruptedAndHidingDoesNotStopFocus: фиксированный sleep280ms опережал запуск отложенной задачи collapse на занятом MainActor. Проверка заменена ожиданием наблюдаемого сворачивания с пределом5секунд и проверкой прежнего compact frame; production-код не менялся. Новая сборка привязывается к commit этого исправления теста; ранние подписанные артефакты dd02fc8 не публикуются.
+
 ## Ограничения
 
 Реальные global keyboard input/неактивация другого приложения, pointer hover/fullscreen/Spaces и VoiceOver остаются неподтверждёнными: CUA видел Stage Manager thumbnails, popupVisible/key audit не установил inactive-app case. Пользователь получил это ограничение до разрешения на публикацию. Новый релиз не превращает offscreen capture или scoped reviewer verdict в проверку этих сценариев. Ранее известные notification/Gatekeeper/Intel-device/macOS14-device ограничения сохраняются.
