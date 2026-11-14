@@ -55,8 +55,8 @@ import TaktCore
     var notifications = 0; state.didSave = { notifications += 1 }
     state.queueQuickDraft(QuickCaptureDraft(text: "Первое"))
     state.queueQuickDraft(QuickCaptureDraft(text: "Последнее", body: "Текст"))
-    // Other MainActor UI tests may run before the debounce task first starts.
-    let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+    // Native services can block the CI MainActor; verify completion, not queue latency.
+    let deadline = ContinuousClock.now.advanced(by: .seconds(20))
     while state.data.preferences.quickDraft != "Последнее", ContinuousClock.now < deadline {
         try await Task.sleep(for: .milliseconds(25))
     }

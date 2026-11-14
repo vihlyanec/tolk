@@ -83,7 +83,10 @@ import TaktCore
     defer { panel.orderOut(nil) }
     #expect(panel.isVisible)
     edge.hover(true)
-    try await Task.sleep(for: .milliseconds(2300))
+    let deadline = ContinuousClock.now.advanced(by: .seconds(20))
+    while panel.isVisible, ContinuousClock.now < deadline {
+        try await Task.sleep(for: .milliseconds(25))
+    }
     #expect(!panel.isVisible && !edge.presentation.expanded)
     // The expired session remains available in the main Pomodoro workspace,
     // but even explicit Show cannot reopen its side timer at 00:00.

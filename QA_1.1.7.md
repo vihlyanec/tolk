@@ -7,3 +7,7 @@
 Финальный локальный source:180Swift tests passed, arm64minimum14/SDK27strict ad-hoc Demo,7validnative captures. Root11source/docs побайтово совпали с tested/reviewed worktree до release notes. Source commit фиксирует manifest; CI/universal/signatures/ZIP renders/public download verification будут внесены по результату.
 
 Живое нажатие верхней кнопки, ввод, полный key-view порядок sheet и VoiceOver не подтверждены: CUA дважды timeout/reset без выбора приложения. Пользователь знал это до разрешения. Offscreen компоненты и невидимое probe окно не доказывают живой workflow. Прежние ограничения notification/fullscreen/Gatekeeper/Intel-device/macOS14-device сохраняются. Следующий выпуск требует нового разрешения.
+
+## Устойчивость проверки CI
+
+Первый CI43621156294на9bb59ddупал в двух прежних async tests: quickDraftDebounce ожидал не более5s, edgeTimerHidesAtDeadline ждал фиксированные2300ms. Лог содержит NSSpellServer timeout, весь набор выполнялся9.658s; MainActor был занят native тестами/сервисами. Сохранены все итоговые assertions, проверяется реальный результат с ограниченным20s ожиданием вместо жёсткой задержки/короткого budget. Production Sources/Resources/scripts не менялись. Ранние9bb59ddартефакты не публикуются; итоговый manifest будет указывать commit исправления тестов.
