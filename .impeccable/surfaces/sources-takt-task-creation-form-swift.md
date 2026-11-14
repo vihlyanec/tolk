@@ -18,7 +18,7 @@ FIRST VIEWPORT: Закреплённый заголовок, умное назв
 FORM: Нативный sheet шириной600pt в основном окне, плотность существующего инспектора. Узкая точно заданная доработка, concept tournament не применим; seed: none (unavailable).
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 
-Новых анимаций нет: часто используемый ввод и перенос команды мгновенны. Глобальная быстрая полоска и строка внутри списка сохраняют существующее поведение. Новый релиз отдельно не разрешён.
+Новых анимаций нет: часто используемый ввод и перенос команды мгновенны. Глобальная быстрая полоска и строка внутри списка сохраняют существующее поведение. На этапе локального review новый релиз ещё не был разрешён.
 
 ## Реализованное поведение
 
@@ -39,3 +39,7 @@ Tab/Shift-Tab в названии формы вызывают нативный �
 `/private/tmp/tolk-full-form-tests.log` заканчивается180успешными Swift tests;11регрессий TaskCreationFormTests проверяют пустое начало, команды/ручные поля, полный ввод даты, атомарный commit/Undo, восстановление после ошибок, caret/selection, конкурирующие команды и form-only передачу Tab/Shift-Tab в key-view traversal. Проба traversal использует тестовое окно и не подтверждает полный key-view порядок рабочего sheet. CUA getState завершился timeout дважды; live click/type, menus, полная клавиатурная навигация и VoiceOver не подтверждены.
 
 Повторный finish verdict — ship: обе material fixes первоначального fix (конкурирующие команды и Tab/Shift-Tab) разрешены. Повторная оценка относится только к этим двум исправлениям, точному source и семи native preview; границы живой проверки остаются прежними. Локальная проверка не разрешает новый релиз. Установленный Толк, личные записи и сервер не менялись. Глобальные PRODUCT.md/DESIGN.md/`.impeccable/design.json` сохранены: это расширение существующей системы, а не её замена.
+
+## Выпуск 1.1.7
+
+После просмотра формы и сообщения о пределах проверки пользователь ответил «релизим». 1.1.7/build45 опубликована Latest14ноября2026, source b58be50, CI43621651070success. Подписи/SDK/7PNG и4publicasset/latestappcast проверены; QA_1.1.7.md содержит итог. Publication не расширяет scoped reviewer verdict или live click/type/полный sheet traversal/VoiceOver evidence. Установленное приложение и личные записи не менялись.

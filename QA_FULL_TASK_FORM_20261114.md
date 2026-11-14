@@ -1,6 +1,6 @@
 # Полная форма новой задачи — 14 ноября 2026
 
-Пользователь попросил открывать всю форму по верхней кнопке «Задача», сохранив умное название: !1 убирается и задаёт высокий приоритет. На уточнение о контексте ответил: **«Всегда начинать с пустых полей»**. Форма не наследует проект, дату, теги или быстрый черновик текущего раздела. Никакого нового Mac-релиза пока не разрешено.
+Пользователь попросил открывать всю форму по верхней кнопке «Задача», сохранив умное название: !1 убирается и задаёт высокий приоритет. На уточнение о контексте ответил: **«Всегда начинать с пустых полей»**. Форма не наследует проект, дату, теги или быстрый черновик текущего раздела. На этапе локальной проверки новый Mac-релиз ещё не был разрешён; последующее разрешение и публикация описаны ниже.
 
 ## Реализация
 
@@ -29,3 +29,7 @@ HTML/CSS detector не применим к нативному AppKit/SwiftUI. Co
 Первый fresh finish-review: disposition fix, две material issues — повторное распознавание оставшихся competing commands меняло last choice и Tab вставлял tab в NSTextView. Исправлено: QuickParser.consumeRedundantCommands opt-in только для полной формы, defaultfalse сохраняет quick semantics; form-only tabMovesFocus вызывает selectNextKeyView/selectPreviousKeyView, quickcompletion неизменен. Новые regressions проверяют paste→повторные blur/save→новые команды, default QuickParser, native coordinator forwarding в невидимом probe NSWindow и quickcompletion. После исправлений180tests passed. Финальная arm64minimum14/SDK27strict ad-hoc Demo пересобрана. Те же7состояний сняты заново, побайтово совпали с ранее валидными captures; receipt /private/tmp/tolk-full-form-final-preview.json. Reviewer verdict pass: **ship**, обе material fixes **resolved**. Это оценка этих двух исправлений, source/tests и preview, а не сертификация всей поверхности или разрешение на выпуск. Documenter проверил source/180tests/все7PNG и сохранил глобальные DESIGN/PRODUCT/sidecar; изменён только новый surface brief. DOCUMENT_FULL_TASK_FORM_20261114.md содержит evidence и hashes.
 
 В рабочий корень перенесены7source/test файлов после сверки5baseline файлов на1882453. Все7SHA256 совпадают с tested/reviewed source. DurableDemo и7PNG/logs/receipts в build/full-task-form; копияDemo после очистки FileProvider metadata прошла strictcodesign. Код/документы локальные, не закоммичены и не опубликованы. Worktree /private/tmp/tolk-full-task-form (codex/full-task-form, base1882453), scratch/private/tmp/tolk-full-form-build. Следующий Mac-релиз требует нового разрешения.
+
+## Выпуск 1.1.7
+
+После просмотра формы и сообщения о пределах проверки пользователь ответил «релизим». 1.1.7/build45 опубликована Latest14ноября2026, source b58be50, CI43621651070success. Подписи/SDK/7PNG и4publicasset/latestappcast проверены; QA_1.1.7.md содержит итог. Publication не расширяет scoped reviewer verdict или live click/type/полный sheet traversal/VoiceOver evidence. Установленное приложение и личные записи не менялись.
