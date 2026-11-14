@@ -15,6 +15,7 @@ struct SmartCaptureInput: NSViewRepresentable {
     var focusRequest: UUID? = nil
     var singleLine = false
     var calendar = Dates.calendar()
+    var tabMovesFocus = false
     var onFocus: (Bool) -> Void = { _ in }
     var expandDescription: (() -> Void)? = nil
     let submit: () -> Void
@@ -52,11 +53,9 @@ struct SmartCaptureInput: NSViewRepresentable {
         guard let editor = scroll.documentView as? CaptureTextView else { return }
         editor.placeholder = placeholder; editor.font = .systemFont(ofSize: fontSize); editor.onShiftReturn = expandDescription
         if editor.string != text && !editor.hasMarkedText() {
-            let selection = editor.selectedRange()
-            let wasAtEnd = selection.length == 0 && selection.location == (editor.string as NSString).length
+            let selection = CaptureInputSelection.replacing(editor.string, with: text, selection: editor.selectedRange())
             editor.string = text
-            let length = (text as NSString).length
-            editor.setSelectedRange(NSRange(location: wasAtEnd ? length : min(selection.location, length), length: 0))
+            editor.setSelectedRange(selection)
         }
         coordinator.highlight(editor)
         if (autoFocus && !coordinator.requestedFocus) || (focusRequest != nil && focusRequest != coordinator.lastFocusRequest) {
@@ -90,6 +89,12 @@ struct SmartCaptureInput: NSViewRepresentable {
             if selector == #selector(NSResponder.insertNewline(_:)) { parent.submit(); return true }
             if selector == #selector(NSResponder.moveDown(_:)) { return parent.move(1) }
             if selector == #selector(NSResponder.moveUp(_:)) { return parent.move(-1) }
+            if parent.tabMovesFocus, selector == #selector(NSResponder.insertTab(_:)) {
+                textView.window?.selectNextKeyView(textView); return true
+            }
+            if parent.tabMovesFocus, selector == #selector(NSResponder.insertBacktab(_:)) {
+                textView.window?.selectPreviousKeyView(textView); return true
+            }
             if selector == #selector(NSResponder.insertTab(_:)) { return parent.complete() }
             return false
         }
@@ -124,6 +129,24 @@ struct SmartCaptureInput: NSViewRepresentable {
             }
             editor.needsDisplay = true
         }
+    }
+}
+
+enum CaptureInputSelection {
+    static func replacing(_ old: String, with new: String, selection: NSRange) -> NSRange {
+        let before = Array(old.utf16), after = Array(new.utf16)
+        var prefix = 0, suffix = 0
+        while prefix < min(before.count, after.count), before[prefix] == after[prefix] { prefix += 1 }
+        while suffix < min(before.count, after.count) - prefix,
+              before[before.count - 1 - suffix] == after[after.count - 1 - suffix] { suffix += 1 }
+        func position(_ index: Int) -> Int {
+            if index == before.count { return after.count }
+            if index <= prefix { return min(index, after.count) }
+            if index >= before.count - suffix { return max(0, min(after.count, index + after.count - before.count)) }
+            return after.count - suffix
+        }
+        let start = position(selection.location), end = position(NSMaxRange(selection))
+        return NSRange(location: start, length: max(0, end - start))
     }
 }
 

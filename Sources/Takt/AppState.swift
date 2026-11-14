@@ -42,6 +42,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
     var inspectorVisible = true
     var sidebarVisible = true
     var sheet: CreationKind?
+    var taskCreationPresented = false
     @ObservationIgnored var showQuick: (Date?) -> Void = { _ in }
     @ObservationIgnored var showRangeQuick: (Date, Int) -> Void = { _, _ in }
     @ObservationIgnored var showSticky: (UUID?) -> Void = { _ in }
@@ -249,8 +250,22 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
             if let initialDate { item.schedule = .timed(initialDate) }
             else if area == .tasks && (scope == .today || scope == .week) { item.schedule = .day(calendar.startOfDay(for: Date())) }
         }
+        return capture(item)
+    }
+    /// Complete form submission uses only its draft, without list context defaults.
+    @discardableResult func capture(_ draft: Item) -> UUID? {
+        guard draft.kind == .task, !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !data.items.contains(where: { $0.id == draft.id }) else { return nil }
+        if let id = draft.projectID, !activeProjects.contains(where: { $0.id == id && $0.kind == .task }) {
+            errorMessage = "Проект больше недоступен. Выберите другой проект или Входящие."; return nil
+        }
+        guard draft.tagIDs.allSatisfy({ id in data.tags.contains { $0.id == id } }) else {
+            errorMessage = "Один из тегов удалён. Обновите выбор тегов."; return nil
+        }
+        var item = draft
+        item.title = item.title.trimmingCharacters(in: .whitespacesAndNewlines)
         change { snapshot in
-            for name in Hashtags.names(in: body) {
+            for name in Hashtags.names(in: item.body) {
                 var tag = snapshot.tags.first { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }
                 if tag == nil { let created = Tag(name: name, color: ProjectTagPalette.nextColor(in: snapshot)); snapshot.tags.append(created); tag = created }
                 if let tag, !item.tagIDs.contains(tag.id) { item.tagIDs.append(tag.id) }

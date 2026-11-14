@@ -405,7 +405,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         do { try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true) }
         catch { FileHandle.standardError.write(Data(error.localizedDescription.utf8)); NSApp.terminate(nil); return }
         state.anchor = Date(); state.area = .calendar
-        func render<V: View>(_ view: V, name: String, width: CGFloat, height: CGFloat, scheme: ColorScheme = .dark) {
+        func render<V: View>(_ view: V, name: String, width: CGFloat, height: CGFloat, scheme: ColorScheme = .dark, scrollToBottom: Bool = false) {
             let root = NSHostingView(rootView: view.frame(width: width, height: height).environment(\.colorScheme, scheme))
             let frame = NSRect(x: 0, y: 0, width: width, height: height)
             let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
@@ -414,11 +414,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             root.layoutSubtreeIfNeeded(); window.displayIfNeeded()
             RunLoop.main.run(until: Date().addingTimeInterval(name == "notes" ? 1.0 : 0.2))
             root.layoutSubtreeIfNeeded()
+            if scrollToBottom {
+                func container(_ view: NSView) -> NSScrollView? {
+                    if let scroll = view as? NSScrollView, let document = scroll.documentView,
+                       scroll.contentSize.height > 100, document.bounds.height > scroll.contentSize.height + 1 { return scroll }
+                    for child in view.subviews { if let scroll = container(child) { return scroll } }
+                    return nil
+                }
+                if let scroll = container(root), let document = scroll.documentView {
+                    scroll.contentView.scroll(to: NSPoint(x: 0, y: document.isFlipped ? document.bounds.height - scroll.contentSize.height : 0))
+                    scroll.reflectScrolledClipView(scroll.contentView)
+                    root.layoutSubtreeIfNeeded()
+                }
+            }
             if let bitmap = root.bitmapImageRepForCachingDisplay(in: root.bounds) {
                 root.cacheDisplay(in: root.bounds, to: bitmap)
                 guard let png = bitmap.representation(using: .png, properties: [:]) else { return }
                 do { try png.write(to: directory.appendingPathComponent(name + ".png")) } catch { FileHandle.standardError.write(Data(error.localizedDescription.utf8)) }
             }
+        }
+        if ProcessInfo.processInfo.arguments.contains("--render-task-form") {
+            state.data.preferences.theme = "dark"
+            render(TaskCreationForm(state: state, height: 680, dismiss: {}), name: "task-form-empty-dark", width: 600, height: 680)
+            state.data.preferences.theme = "light"
+            render(TaskCreationForm(state: state, height: 680, dismiss: {}), name: "task-form-empty-light", width: 600, height: 680, scheme: .light)
+            var draft = TaskCreationDraft()
+            draft.item.title = "Отправить план завтра в 10 !1 "
+            draft.recognize(projects: state.activeProjects, tags: state.data.tags, calendar: state.calendar)
+            draft.item.projectID = state.activeProjects.first(where: { $0.kind == .task })?.id
+            draft.item.tagIDs = state.data.tags.prefix(1).map(\.id)
+            draft.item.body = "Сверить сроки с командой и приложить документ."
+            state.data.preferences.theme = "dark"
+            render(TaskCreationForm(state: state, draft: draft, height: 680, dismiss: {}), name: "task-form-filled-dark", width: 600, height: 680)
+            state.data.preferences.theme = "light"
+            render(TaskCreationForm(state: state, draft: draft, height: 680, dismiss: {}), name: "task-form-filled-light", width: 600, height: 680, scheme: .light)
+            render(TaskCreationForm(state: state, draft: draft, height: 460, dismiss: {}), name: "task-form-short-light", width: 600, height: 460, scheme: .light)
+            draft.item.recurrence = .intervalDays; draft.item.repeatEveryDays = 3
+            draft.item.checklist = [CheckItem(title: "Сверить сроки"), CheckItem(title: "Приложить документ")]
+            draft.item.timedReminderOffsets = [0,15]
+            state.data.preferences.theme = "dark"
+            render(TaskCreationForm(state: state, draft: draft, height: 680, dismiss: {}), name: "task-form-details-dark", width: 600, height: 680, scrollToBottom: true)
+            state.data.preferences.theme = "light"
+            render(TaskCreationForm(state: state, draft: draft, height: 680, dismiss: {}), name: "task-form-details-light", width: 600, height: 680, scheme: .light, scrollToBottom: true)
+            NSApp.terminate(nil); return
         }
         if ProcessInfo.processInfo.arguments.contains("--render-focus-pause") {
             let date = Date(timeIntervalSince1970: 1_794_222_000)

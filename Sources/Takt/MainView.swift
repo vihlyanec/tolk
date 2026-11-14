@@ -43,6 +43,7 @@ struct MainView: View {
         } message: { Text("Текущий сеанс завершится. Новый начнётся с 25 минут.") }
         .modifier(ProjectDeletionPrompt(state: state))
         .sheet(item: $state.sheet) { CreationSheet(state: state, kind: $0) }
+        .sheet(isPresented: $state.taskCreationPresented) { TaskCreationForm(state: state) { state.taskCreationPresented = false } }
         .onChange(of: state.area) { _, area in
             state.calendarEditingID = nil; state.endDrag(); state.search = ""
             if area == .calendar { state.scope = .all; state.search = "" }
@@ -172,7 +173,10 @@ struct TaskListView: View {
                             Text("Список").tag(false); Text("Канбан").tag(true)
                         }.pickerStyle(.segmented).labelsHidden().frame(width: 160)
                     }
-                    Button { state.area == .notes ? state.showSticky(nil) : state.showQuick(nil) } label: { Label(state.area == .notes ? "Заметка" : "Задача", systemImage: "plus") }.buttonStyle(.borderedProminent)
+                    Button {
+                        if state.area == .notes { state.showSticky(nil) }
+                        else { state.taskCreationPresented = true }
+                    } label: { Label(state.area == .notes ? "Заметка" : "Задача", systemImage: "plus") }.buttonStyle(.borderedProminent)
                     if let id = state.selectedID, state.selected?.deleted == false { IconButton(symbol: "trash", help: "Удалить выбранную задачу") { state.delete(id) } }
                     IconButton(symbol: "sidebar.right", help: "Показать/скрыть детали") { state.inspectorVisible.toggle() }
                 }.padding(22)

@@ -26,7 +26,7 @@ public struct ParsedTask: Sendable {
     }
 }
 public enum QuickParser {
-    public static func parse(_ text: String, projects: [Project], tags: [Tag], now: Date = Date(), calendar: Calendar = Dates.calendar(), literalRanges: [NSRange] = []) -> ParsedTask {
+    public static func parse(_ text: String, projects: [Project], tags: [Tag], now: Date = Date(), calendar: Calendar = Dates.calendar(), literalRanges: [NSRange] = [], consumeRedundantCommands: Bool = false) -> ParsedTask {
         var source = text
         var result = ParsedTask(title: text)
         func consume(_ pattern: String, kind: QuickTokenKind = .date, tokenKind: (([String]) -> QuickTokenKind)? = nil, action: ([String]) -> Bool) {
@@ -51,7 +51,7 @@ public enum QuickParser {
                 result.warnings.append("Проект «\(name)» не найден — текст оставлен в названии"); return false
             }
             if result.projectID == nil { result.projectID = project.id; return true }
-            return false
+            return consumeRedundantCommands
         }
         consume(#"(?<![\p{L}\p{N}_/])#(?:"([^"\n]+)"|([\p{L}\p{N}_-]+))"#, kind: .tag) { values in
             let name = values[1].isEmpty ? values[2] : values[1]
@@ -62,11 +62,11 @@ public enum QuickParser {
         }
         var priorityFound = false
         consume(#"(?<!\S)!([0-3])(?=\s|$)"#, kind: .priority) { values in
-            guard !priorityFound else { return false }; priorityFound = true
+            guard !priorityFound else { return consumeRedundantCommands }; priorityFound = true
             result.priority = Int(values[1]) ?? 0; return true
         }
         consume(#"(?<!\S)(важно|срочно|высокий приоритет|средний приоритет|низкий приоритет)(?=\s|$)"#, kind: .priority) { values in
-            guard !priorityFound else { return false }; priorityFound = true
+            guard !priorityFound else { return consumeRedundantCommands }; priorityFound = true
             let word = values[1].lowercased()
             result.priority = word.hasPrefix("средний") ? 2 : word.hasPrefix("низкий") ? 3 : 1
             return true
