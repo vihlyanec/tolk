@@ -13,3 +13,7 @@ Persistence: Item.projectID remains UUID?, Item.section remains String, Project.
 Evidence: all eleven captures in `.impeccable/review/project-path/` inspected: native offscreen dark/light forms and suggestions, live CUA native form/saved inspector, browser desktop/mobile fixtures. QA reports native form blur/save and inline Return completion/save plus valid/unknown-stage web saves; 191 Swift, 45 Python and 28 JS tests passed. Shared parser/suggestion/helper behavior is covered automatically. No approved comp: code-led extension of incumbent UI. `REVIEW_PROJECT_PATH_20261117.md`: ship for the local scope, no material fixes; `DOCUMENT_PROJECT_PATH_20261117.md`: documentation complete.
 
 Limits: physical iPhone, VoiceOver and live global Control-Q were not checked. No release authorized; installed application, personal data and production server were not changed.
+
+## Выпуск1.1.8
+
+После локального review пользователь разрешил «релизим». 1.1.8/build46 опубликована Latest17ноября17:58МСК, sourcee01695c, CI44106021664success. ПервыйARMCI не получилrunner; единственная последующая правка — IntelCIlabel, тесты не ослаблены. Подписи/обеmin14SDK27/4nativePNG и4publicassets/latestappcast проверены. Web4staticfiles обновлены17:26МСК с onlinebackup ибезрестартов, внешниеHTTPS SHA/APIboundaries проверены. QA_1.1.8.md/QA_WEB_118.md содержат итог. Publication не расширяет scopedreview или physicaliPhone/VoiceOver/liveglobalControlQ evidence; установленныйТолк иличныезадачи не менялись.
