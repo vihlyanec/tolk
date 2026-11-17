@@ -4,7 +4,8 @@ permissions:
   contents: read
 jobs:
   macos:
-    runs-on: macos-latest
+    # Keep universal verification available during hosted ARM runner capacity limits.
+    runs-on: macos-26-intel
     steps:
       - uses: actions/checkout@v4
       - name: Выбрать самый новый установленный Xcode
