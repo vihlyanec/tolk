@@ -433,6 +433,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
                 do { try png.write(to: directory.appendingPathComponent(name + ".png")) } catch { FileHandle.standardError.write(Data(error.localizedDescription.utf8)) }
             }
         }
+        if ProcessInfo.processInfo.arguments.contains("--render-project-path") {
+            var project = Project(name: "Личное пространство", color: "28D9AD")
+            project.sections = ["Без раздела", "Спорт", "Спорт силовой", "Планы на неделю"]
+            state.data.projects = [project]
+            state.data.preferences.quickDraft = "Тренировка /Личное пространство/Спорт"
+            for (theme, scheme) in [("dark", ColorScheme.dark), ("light", ColorScheme.light)] {
+                state.data.preferences.theme = theme
+                render(QuickCaptureView(state: state, dismiss: {}), name: "project-path-suggestions-" + theme, width: 640, height: 141, scheme: scheme)
+                var draft = TaskCreationDraft()
+                draft.item.title = "Тренировка /Личное пространство/Спорт силовой !1"
+                draft.recognize(projects: state.activeProjects, tags: state.data.tags)
+                render(TaskCreationForm(state: state, draft: draft, height: 680, dismiss: {}), name: "project-path-form-" + theme, width: 600, height: 680, scheme: scheme)
+            }
+            NSApp.terminate(nil); return
+        }
         if ProcessInfo.processInfo.arguments.contains("--render-task-form") {
             state.data.preferences.theme = "dark"
             render(TaskCreationForm(state: state, height: 680, dismiss: {}), name: "task-form-empty-dark", width: 600, height: 680)

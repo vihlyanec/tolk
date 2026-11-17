@@ -27,3 +27,30 @@ test('relative mobile input keeps the right day across midnight',()=>{
 test('legacy callers never receive UI metadata in the wire patch',()=>{
  assert.equal(Object.hasOwn(parseQuick('Созвон завтра'),'recognized'),false);
 });
+
+test('project paths accept quoted legacy and unquoted names with spaces',()=>{
+ const project={id:'p',data:{title:'Личное пространство',sections:['Без раздела','Спорт','Спорт силовой','Планы на завтра']}};
+ for(const path of ['/Личное пространство/Спорт силовой','/"Личное пространство"/"Спорт силовой"','/Личное пространство/"Спорт силовой"']){
+  const p=parseQuick('🏋️ Тренировка '+path+' !1',{projects:[project]});
+  assert.equal(p.title,'🏋️ Тренировка');assert.equal(p.projectID,'p');assert.equal(p.section,'Спорт силовой');assert.equal(p.priority,1);
+ }
+ const p=parseQuick('Дело /Личное пространство/Планы на завтра',{projects:[project]});
+ assert.equal(p.section,'Планы на завтра');assert.equal(p.schedule.kind,'none');
+ assert.equal(parseQuick('Дело /Личное пространство',{projects:[project]}).section,'Без раздела');
+});
+test('unknown stage selects only its project and never creates a new stage',()=>{
+ const projects=[{id:'p',data:{title:'Личное',sections:['Без раздела','Спорт']}}];
+ for(const path of ['/Личное/Нет','/"Личное"/"Новый этап"','/Личное/']){
+  const p=parseQuick('Дело '+path,{projects});assert.equal(p.projectID,'p');assert.equal(p.section,'Без раздела');assert.equal(p.title,'Дело');assert.equal(p.warnings.length,1);
+ }
+ assert.deepEqual(projects[0].data.sections,['Без раздела','Спорт']);
+});
+test('project paths preserve URLs and use the longest existing project',()=>{
+ const projects=[{id:'p',data:{title:'Личное',sections:['Спорт']}},{id:'q',data:{title:'Личное пространство',sections:['Спорт']}}];
+ const p=parseQuick('Дело https://example.org/Личное/Спорт /Личное пространство/Спорт вечером',{projects});
+ assert.equal(p.title,'Дело https://example.org/Личное/Спорт вечером');assert.equal(p.projectID,'q');assert.equal(p.section,'Спорт');
+ for(const data of [{archived:true},{deleted:true},{itemKind:'note'}])assert.equal(parseQuick('Дело /Личное/Спорт',{projects:[{id:'p',data:{title:'Личное',sections:['Спорт'],...data}}]}).projectID,'');
+ const name='Дом/работа',stage='Этап "А"';
+ const escaped=parseQuick('Дело /'+JSON.stringify(name)+'/'+JSON.stringify(stage),{projects:[{id:'r',data:{title:name,sections:[stage]}}]});
+ assert.equal(escaped.projectID,'r');assert.equal(escaped.section,stage);assert.equal(escaped.title,'Дело');
+});

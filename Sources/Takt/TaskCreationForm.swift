@@ -9,13 +9,13 @@ struct TaskCreationDraft {
         let raw = item.title
         let literalRanges = QuickLiteralToken.ranges(literals, in: raw)
         let detected = QuickParser.parse(raw, projects: projects, tags: tags, now: now, calendar: calendar, literalRanges: literalRanges, consumeRedundantCommands: true)
-        // Keep date phrases together while typing: «12 дек » may still gain a year or time.
-        let pendingDates = detected.tokens.filter { $0.kind == .date || $0.kind == .time }.map(\.range)
+        // Keep dates and paths together while typing: names and stages can contain spaces.
+        let pendingDates = detected.tokens.filter { $0.kind == .date || $0.kind == .time || $0.kind == .project }.map(\.range)
         let parsed = finishing ? detected : QuickParser.parse(raw, projects: projects, tags: tags, now: now, calendar: calendar, literalRanges: literalRanges + pendingDates, consumeRedundantCommands: true)
         guard !parsed.tokens.isEmpty else { return }
         if parsed.tokens.contains(where: { $0.kind == .project }) {
             item.projectID = parsed.projectID
-            item.section = projects.first { $0.id == parsed.projectID }?.sections.first ?? "Без раздела"
+            item.section = parsed.section ?? "Без раздела"
         }
         for id in parsed.tagIDs where !item.tagIDs.contains(id) { item.tagIDs.append(id) }
         if parsed.tokens.contains(where: { $0.kind == .priority }) { item.priority = parsed.priority }
@@ -60,7 +60,7 @@ struct TaskCreationForm: View {
                                       onFocus: { if !$0 { recognize() } }, expandDescription: { descriptionFocus = UUID() }, submit: save)
                         .frame(height: 38)
                         .onChange(of: draft.item.title) { _, text in if text.last?.isWhitespace == true { recognize(finishing: false) } }
-                    Text("Название понимает !1, завтра, /проект и #тег. Распознанные команды переносятся в поля формы.")
+                    Text("Название понимает !1, завтра, /проект/этап и #тег. Путь и дата переносятся в поля после выхода из названия.")
                         .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     if let warning = parsed.warnings.first { Text(warning).font(.system(size: 11)).foregroundStyle(.secondary) }
                     row("Проект") { projectPicker }

@@ -8,6 +8,32 @@ struct CaptureSuggestion: Identifiable {
     let replacement: String
     var createProject = false
     var createTag = false
+    var replacementRange: NSRange?
+    var projectID: UUID?
+    var projectName: String?
+
+    func applying(to text: String, lastToken: String) -> String {
+        let range = replacementRange ?? NSRange(location: (text as NSString).length - (lastToken as NSString).length, length: (lastToken as NSString).length)
+        return (text as NSString).replacingCharacters(in: range, with: replacement + " ")
+    }
+
+    static func projectPaths(in text: String, projects: [Project], allowCreation: Bool = false) -> [Self]? {
+        guard let range = QuickProjectPath.completionRange(in: text) else { return nil }
+        let query = (text as NSString).substring(with: range)
+        var choices = QuickProjectPath.completions(for: query, projects: projects).map { value in
+            Self(id: value.project.id.uuidString + (value.section.map { "/" + $0 } ?? ""),
+                 title: value.project.name + (value.section.map { " / " + $0 } ?? ""),
+                 symbol: value.section == nil ? "folder" : "rectangle.split.3x1", replacement: value.command,
+                 replacementRange: range, projectID: value.project.id)
+        }
+        let name = String(query.dropFirst())
+        if allowCreation && choices.isEmpty && !name.isEmpty && !name.contains(where: { $0.isWhitespace || $0 == "/" || $0 == "\"" }),
+           QuickProjectPath.matches(in: query, projects: projects).isEmpty {
+            choices.append(Self(id: "create", title: "Создать проект «\(name)»", symbol: "plus",
+                                replacement: QuickProjectPath.command(name), createProject: true, replacementRange: range, projectName: name))
+        }
+        return choices
+    }
 }
 struct QuickCaptureView: View {
     @Bindable var state: AppState
@@ -40,12 +66,8 @@ struct QuickCaptureView: View {
     private var token: String { String(text.split(separator: " ", omittingEmptySubsequences: false).last ?? "") }
     private var suggestions: [CaptureSuggestion] {
         if QuickLiteralToken.suppressesSuggestions(literals, in: text) { return [] }
-        if token.hasPrefix("/") {
-            let query = String(token.dropFirst())
-            let projects = state.activeProjects.filter { $0.kind == .task && (query.isEmpty || $0.name.localizedCaseInsensitiveContains(query)) }
-            var values = projects.map { CaptureSuggestion(id: $0.id.uuidString, title: $0.name, symbol: "folder", replacement: "/\"\($0.name)\"") }
-            if !query.isEmpty && projects.isEmpty && !query.contains("\"") { values.append(CaptureSuggestion(id: "create", title: "Создать проект «\(query)»", symbol: "plus", replacement: "/\"\(query)\"", createProject: true)) }
-            return Array(values.prefix(6))
+        if let paths = CaptureSuggestion.projectPaths(in: text, projects: state.activeProjects, allowCreation: true), !paths.isEmpty {
+            return Array(paths.prefix(6))
         }
         if token.hasPrefix("#") {
             let query = String(token.dropFirst())
@@ -106,10 +128,10 @@ struct QuickCaptureView: View {
     }
     private func cancel() { state.clearQuickDraft(); dismiss() }
     private func choose(_ suggestion: CaptureSuggestion) {
-        let name = String(token.dropFirst())
+        let name = suggestion.projectName ?? String(token.dropFirst())
         if suggestion.createProject { state.change { $0.projects.append(Project(name: name, color: ProjectTagPalette.nextColor(in: $0))) } }
         if suggestion.createTag { state.change { $0.tags.append(Tag(name: name, color: ProjectTagPalette.nextColor(in: $0))) } }
-        setText(String(text.dropLast(token.count)) + suggestion.replacement + " ")
+        setText(suggestion.applying(to: text, lastToken: token))
     }
     private func submit() {
         switch CaptureBehavior.submitAction(text: text, parsed: parsed, suggestionCount: suggestions.count) {
@@ -167,10 +189,8 @@ struct InlineQuickEntry: View {
     private var token: String { String(text.split(separator: " ", omittingEmptySubsequences: false).last ?? "") }
     private var choices: [CaptureSuggestion] {
         if QuickLiteralToken.suppressesSuggestions(literals, in: text) { return [] }
-        if token.hasPrefix("/") {
-            let query = String(token.dropFirst())
-            return state.activeProjects.filter { $0.kind == .task && (query.isEmpty || $0.name.localizedCaseInsensitiveContains(query)) }
-                .prefix(5).map { CaptureSuggestion(id: $0.id.uuidString, title: $0.name, symbol: "folder", replacement: "/\"\($0.name)\"") }
+        if let paths = CaptureSuggestion.projectPaths(in: text, projects: state.activeProjects), !paths.isEmpty {
+            return Array(paths.prefix(5))
         }
         if token.hasPrefix("#") {
             let query = String(token.dropFirst())
@@ -186,7 +206,7 @@ struct InlineQuickEntry: View {
             HStack(spacing: 10) {
                 Image(systemName: "plus.circle").foregroundStyle(Palette.accent)
                 SmartCaptureInput(text: $text, literals: $literals, parsed: parsed, projects: state.activeProjects, tags: state.data.tags,
-                                  placeholder: "Добавить задачу…  / проект   # тег   ! приоритет", fontSize: 13, focusRequest: titleFocus, singleLine: true, calendar: state.calendar,
+                                  placeholder: "Добавить задачу…  /проект/этап   #тег   !приоритет", fontSize: 13, focusRequest: titleFocus, singleLine: true, calendar: state.calendar,
                                   onFocus: { focused = $0 }, expandDescription: openDescription, submit: submit,
                                   move: { direction in guard !choices.isEmpty else { return false }; selectedSuggestion = (selectedSuggestion + direction + choices.count) % choices.count; return true })
                     .frame(height: 32)
@@ -205,7 +225,7 @@ struct InlineQuickEntry: View {
             } else if !text.isEmpty {
                 HStack(spacing: 9) {
                     if let date = parsed.schedule.date { Text(state.dayLabel(date) + (parsed.schedule.isTimed ? ", " + state.time(date) : "")) }
-                    if let id = parsed.projectID { Text(state.projectName(id)) }
+                    if let id = parsed.projectID { Text(state.projectName(id) + (parsed.section.map { " / " + $0 } ?? "")) }
                     if parsed.priority != 0 { PriorityCapsule(priority: parsed.priority) }
                     ForEach(parsed.tagIDs, id: \.self) { id in if let tag = state.data.tags.first(where: { $0.id == id }) { TagCapsule(tag: tag) } }
                     if let warning = parsed.warnings.first { Text(warning).foregroundStyle(.orange) }
@@ -221,7 +241,7 @@ struct InlineQuickEntry: View {
     private func setText(_ value: String) { literals = QuickLiteralToken.rebased(literals, from: text, to: value); text = value }
     private func choose(_ choice: CaptureSuggestion) {
         if choice.createTag { state.change { $0.tags.append(Tag(name: String(token.dropFirst()), color: ProjectTagPalette.nextColor(in: $0))) } }
-        setText(String(text.dropLast(token.count)) + choice.replacement + " "); focused = true }
+        setText(choice.applying(to: text, lastToken: token)); focused = true }
     private func submit() {
         switch CaptureBehavior.submitAction(text: text, parsed: parsed, suggestionCount: choices.count) {
         case .applySuggestion: choose(choices[min(selectedSuggestion, choices.count - 1)])
@@ -285,7 +305,7 @@ struct StickyView: View {
 private func captureSuggestionColor(_ suggestion: CaptureSuggestion, state: AppState) -> Color {
     let dark = state.data.preferences.theme != "light"
     if suggestion.symbol == "flag" { return Color(nsColor: SemanticTint.priority(Int(suggestion.id) ?? 0, dark: dark)) }
-    let hex = state.data.tags.first { $0.id.uuidString == suggestion.id }?.color ?? state.data.projects.first { $0.id.uuidString == suggestion.id }?.color ?? "598BFF"
+    let hex = state.data.tags.first { $0.id.uuidString == suggestion.id }?.color ?? state.data.projects.first { $0.id == suggestion.projectID || $0.id.uuidString == suggestion.id }?.color ?? "598BFF"
     return Color(nsColor: SemanticTint.color(hex: hex, dark: dark))
 }
 

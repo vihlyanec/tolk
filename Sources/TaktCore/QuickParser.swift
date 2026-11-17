@@ -12,6 +12,7 @@ public struct QuickToken: Equatable, Sendable {
 public struct ParsedTask: Sendable {
     public var title: String
     public var projectID: UUID?
+    public var section: String?
     public var tagIDs: [UUID] = []
     public var priority = 0
     public var duration = 30
@@ -21,6 +22,7 @@ public struct ParsedTask: Sendable {
     public var tokens: [QuickToken] = []
     public func item() -> Item {
         var item = Item(title: title, projectID: projectID)
+        if let section { item.section = section }
         item.tagIDs = tagIDs; item.priority = priority; item.duration = duration; item.schedule = schedule
         return item
     }
@@ -29,11 +31,12 @@ public enum QuickParser {
     public static func parse(_ text: String, projects: [Project], tags: [Tag], now: Date = Date(), calendar: Calendar = Dates.calendar(), literalRanges: [NSRange] = [], consumeRedundantCommands: Bool = false) -> ParsedTask {
         var source = text
         var result = ParsedTask(title: text)
+        var protectedProjectRanges: [NSRange] = []
         func consume(_ pattern: String, kind: QuickTokenKind = .date, tokenKind: (([String]) -> QuickTokenKind)? = nil, action: ([String]) -> Bool) {
             guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return }
             let matches = regex.matches(in: source, range: NSRange(source.startIndex..., in: source))
             for match in matches.reversed() {
-                guard !literalRanges.contains(where: { NSIntersectionRange($0, match.range).length > 0 }) else { continue }
+                guard !(literalRanges + protectedProjectRanges).contains(where: { NSIntersectionRange($0, match.range).length > 0 }) else { continue }
                 let values = (0..<match.numberOfRanges).map { n -> String in
                     guard let range = Range(match.range(at: n), in: source) else { return "" }
                     return String(source[range])
@@ -45,13 +48,25 @@ public enum QuickParser {
                 }
             }
         }
-        consume(#"(?<!\S)/(?:"([^"]+)"|([^\s/]+))(?=\s|$)"#, kind: .project) { values in
-            let name = values[1].isEmpty ? values[2] : values[1]
-            guard let project = projects.first(where: { $0.kind == .task && !$0.archived && $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }) else {
-                result.warnings.append("Проект «\(name)» не найден — текст оставлен в названии"); return false
+        let projectPaths = QuickProjectPath.matches(in: text, projects: projects)
+        for match in projectPaths.reversed() {
+            guard !literalRanges.contains(where: { NSIntersectionRange($0, match.range).length > 0 }),
+                  result.projectID == nil || consumeRedundantCommands else { continue }
+            if result.projectID == nil {
+                result.projectID = match.project.id; result.section = match.section
+                if match.missingSection { result.warnings.append("Раздел не найден — выбран только проект «\(match.project.name)»") }
             }
-            if result.projectID == nil { result.projectID = project.id; return true }
-            return consumeRedundantCommands
+            let value = (text as NSString).substring(with: match.range)
+            result.tokens.append(QuickToken(range: match.range, kind: .project, value: value))
+            if let range = Range(match.range, in: source) {
+                source.replaceSubrange(range, with: String(repeating: " ", count: match.range.length))
+            }
+        }
+        protectedProjectRanges = projectPaths.map(\.range)
+        let unknownProjects = try! NSRegularExpression(pattern: #"(?<!\S)/(?:"([^"]+)"|([^\s/]+))(?=\s|$)"#)
+        for match in unknownProjects.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+            guard !(literalRanges + protectedProjectRanges).contains(where: { NSIntersectionRange($0, match.range).length > 0 }) else { continue }
+            result.warnings.append("Проект не найден — текст оставлен в названии")
         }
         consume(#"(?<![\p{L}\p{N}_/])#(?:"([^"\n]+)"|([\p{L}\p{N}_-]+))"#, kind: .tag) { values in
             let name = values[1].isEmpty ? values[2] : values[1]

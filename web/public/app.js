@@ -1,4 +1,4 @@
-import {parseQuick} from './smart.js?v=20261111';
+import {parseQuick} from './smart.js?v=20261117-project-path';
 import {dayAndTime,scheduleFromWall} from './model.js?v=20261111';
 import * as Pomodoro from './pomodoro.js?v=20261111';
 import {Client, api} from './sync.js?v=20261111';
@@ -385,7 +385,7 @@ function capturePreview(result) {
     const wall=result.schedule.kind==='timed'?dayAndTime(result.schedule.instant,settings().timeZone||'Europe/Moscow'):{date:result.schedule.day,time:''};
     parts.push(taskDate(wall));
   }
-  if(result.projectID)parts.push(projectName(result.projectID));
+  if(result.projectID)parts.push(projectName(result.projectID)+(result.section&&result.section!=='Без раздела'?' / '+result.section:''));
   if(result.priority)parts.push(['','Высокий приоритет','Средний приоритет','Низкий приоритет'][result.priority]);
   if(result.recognized.includes('duration'))parts.push(result.duration+' мин');
   for(const id of result.tagIDs)parts.push('#'+(tags().find(t=>t.id===id)?.data.title||''));
@@ -397,7 +397,7 @@ function quickCapture() {
   const touched=new Set(draft.touched||[]);let completed=false;
   openEditor(`<form class="capture-form"><header class="editor-header"><button type="button" class="text-button" data-cancel>Отмена</button><h2 id="editor-title">${note?'Новая заметка':'Новая задача'}</h2><button type="submit" class="text-button capture-submit">Добавить</button></header>
     <div class="editor-content capture-content"><label class="sr-only" for="capture-title">${note?'Название заметки':'Задача с умным вводом'}</label><textarea id="capture-title" class="title-input" name="title" rows="3" placeholder="${note?'Название заметки':'Например: Позвонить завтра в 10'}" maxlength="16000" required autofocus enterkeyhint="done">${escape(draft.title||'')}</textarea>
-    <div class="capture-recognition" role="status" aria-live="polite" aria-atomic="true"></div><p class="capture-help">${note?'Текст заметки можно добавить в деталях.':'Дата, время, /проект, #метка и !приоритет — прямо в тексте.'}</p>
+    <div class="capture-recognition" role="status" aria-live="polite" aria-atomic="true"></div><p class="capture-help">${note?'Текст заметки можно добавить в деталях.':'Дата, время, /проект/этап, #метка и !приоритет — прямо в тексте.'}</p>
     <details class="capture-options"><summary>Дата, проект и детали</summary><div class="capture-fields"><div class="date-time"><label>Дата<input type="date" name="date" value="${escape(draft.date||'')}"></label><label>Время<input type="time" name="time" value="${escape(draft.time||'')}"></label></div><label>Проект<select name="projectID"><option value="">Входящие</option>${projects().map(p=>`<option value="${p.id}" ${p.id===draft.projectID?'selected':''}>${escape(p.data.title)}</option>`).join('')}</select></label><label>Описание<textarea name="body" rows="3" placeholder="Детали, мысли, ссылки…" maxlength="5000000">${escape(draft.body||'')}</textarea></label></div></details><p class="error" role="alert"></p></div></form>`,async(form)=>{
       const result=resolve();if(!result.title)throw new Error('Добавьте название задачи перед датой.');
       const {warnings,recognized,...patch}=result;
@@ -411,7 +411,7 @@ function quickCapture() {
     const result=parseCapture(title.value);
     const wall=result.schedule.kind==='timed'?dayAndTime(result.schedule.instant,settings().timeZone||'Europe/Moscow'):{date:result.schedule.day||'',time:''};
     if(touched.has('date')||touched.has('time'))result.schedule=scheduleFromWall(touched.has('date')?form.elements.date.value:wall.date,touched.has('time')?form.elements.time.value:wall.time,settings().timeZone||'Europe/Moscow');
-    if(touched.has('projectID'))result.projectID=form.elements.projectID.value;
+    if(touched.has('projectID')&&result.projectID!==form.elements.projectID.value){result.projectID=form.elements.projectID.value;result.section='Без раздела';}
     return result;
   }
   function saveDraft(){if(completed)return;try{sessionStorage.setItem(draftKey,JSON.stringify({...Object.fromEntries(new FormData(form)),touched:[...touched]}));}catch{}}

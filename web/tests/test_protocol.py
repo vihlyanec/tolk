@@ -37,6 +37,16 @@ class ProtocolTests(unittest.TestCase):
     def send(self, *ops, cursor=0):
         return self.store.sync(self.account, list(ops), cursor)
 
+    def test_project_stage_path_uses_existing_string_fields(self):
+        project_id, task_id = uid(), uid()
+        self.send(operation(project_id, patch={'title': 'Личное пространство', 'sections': ['Без раздела', 'Спорт силовой']}, kind='project'))
+        self.send(operation(task_id, patch={'title': 'Тренировка', 'projectID': project_id, 'section': 'Спорт силовой'}))
+        self.store = Store(self.store.path)
+        records = {r['id']: r['data'] for r in self.send()['changes']}
+        self.assertEqual(records[task_id]['projectID'], project_id)
+        self.assertEqual(records[task_id]['section'], 'Спорт силовой')
+        self.assertEqual(records[project_id]['sections'], ['Без раздела', 'Спорт силовой'])
+
     def test_two_clients_create_edit_complete(self):
         create = operation()
         first = self.send(create)

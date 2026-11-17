@@ -38,8 +38,8 @@ enum SemanticTint {
             let name = String(token.value.dropFirst()).trimmingCharacters(in: CharacterSet(charactersIn: "\""))
             return color(hex: tags.first { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }?.color ?? "AD94E8", dark: dark)
         case .project:
-            let name = String(token.value.dropFirst()).trimmingCharacters(in: CharacterSet(charactersIn: "\""))
-            return color(hex: projects.first { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }?.color ?? "AD94E8", dark: dark)
+            let project = QuickProjectPath.matches(in: token.value, projects: projects).first?.project
+            return color(hex: project?.color ?? "598BFF", dark: dark)
         case .priority:
             let value = token.value.hasPrefix("!") ? Int(token.value.dropFirst()) ?? 0 : token.value.lowercased().hasPrefix("средний") ? 2 : token.value.lowercased().hasPrefix("низкий") ? 3 : 1
             return priority(value, dark: dark)

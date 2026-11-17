@@ -1,9 +1,27 @@
 import {dayAndTime,scheduleFromWall} from './model.js?v=20261109';
 // The same unambiguous Russian forms as the Mac quick input; unknown text stays text.
 export function parseQuick(text,{projects=[],tags=[],zone='Europe/Moscow',now=Date.now(),metadata=false}={}) {
- let source=text,day='',clock='',duration=30,priority=0,projectID='',tagIDs=[],warnings=[],recognized=[];
+ let source=text,day='',clock='',duration=30,priority=0,projectID='',section='Без раздела',tagIDs=[],warnings=[],recognized=[];
  const consume=(regex,action,field)=>{source=source.replace(regex,(...args)=>{const match=args[0];if(!action(args.slice(0,-2)))return match;if(field&&!recognized.includes(field))recognized.push(field);return ' '.repeat(match.length);});};
- consume(/(?<!\S)\/(?:"([^"]+)"|([^\s/]+))(?=\s|$)/giu,v=>{const p=projects.find(p=>p.data.title.toLocaleLowerCase()===(v[1]||v[2]).toLocaleLowerCase());if(!p||projectID)return false;projectID=p.id;return true;},'projectID');
+ const escaped=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+ const component=name=>'(?:'+[JSON.stringify(name),...(/[\/"\\\n\r]/u.test(name)?[]:[name])].map(escaped).join('|')+')';
+ const prefix=(pattern,value)=>new RegExp('^(?:'+pattern+')','iu').exec(value)?.[0]||'';
+ const active=projects.filter(p=>!p.data.deleted&&!p.data.archived&&p.data.itemKind!=='note');
+ for(const start of [...text.matchAll(/(?<!\S)\//gu)]){
+  const tail=source.slice(start.index+1);
+  const heads=active.map(project=>({project,head:prefix(component(project.data.title)+'(?=/|\\s|$)',tail)})).filter(v=>v.head).sort((a,b)=>b.head.length-a.head.length);
+  if(!heads.length||projectID)continue;
+  const {project,head}=heads[0];let length=1+head.length;
+  const rest=tail.slice(head.length);
+  if(rest.startsWith('/')){
+   const stageText=rest.slice(1);
+   const stages=(project.data.sections||[]).map(name=>({name,head:prefix(component(name)+'(?=\\s|$)',stageText)})).filter(v=>v.head).sort((a,b)=>b.head.length-a.head.length);
+   if(stages.length){section=stages[0].name;length+=1+stages[0].head.length;}
+   else{length+=1+prefix('(?:"(?:\\\\.|[^"\\\\])*"|[^\\s]+)?',stageText).length;warnings.push('Раздел не найден — выбран только проект «'+project.data.title+'»');}
+  }
+  projectID=project.id;recognized.push('projectID');
+  source=source.slice(0,start.index)+' '.repeat(length)+source.slice(start.index+length);
+ }
  consume(/(?<![\p{L}\p{N}_/])#(?:"([^"\n]+)"|([\p{L}\p{N}_-]+))/giu,v=>{const t=tags.find(t=>t.data.title.toLocaleLowerCase()===(v[1]||v[2]).toLocaleLowerCase());if(!t)return false;if(!tagIDs.includes(t.id))tagIDs.push(t.id);return true;},'tagIDs');
  consume(/(?<!\S)!([0-3])(?=\s|$)/giu,v=>{priority=Number(v[1]);return true;},'priority');
  consume(/(?<!\S)(важно|срочно|высокий приоритет|средний приоритет|низкий приоритет)(?=\s|$)/giu,v=>{priority=v[1].toLowerCase().startsWith('средний')?2:v[1].toLowerCase().startsWith('низкий')?3:1;return true;},'priority');
@@ -30,5 +48,5 @@ export function parseQuick(text,{projects=[],tags=[],zone='Europe/Moscow',now=Da
  consume(/(?<!\S)в\s+([01]?\d|2[0-3])(?=\s|$)/giu,v=>{if(clock)return false;clock=v[1].padStart(2,'0')+':00';return true;},'time');
  let schedule=day||clock?scheduleFromWall(day||current,clock,zone):{kind:'none'};
  if(schedule.kind==='timed'&&schedule.instant<now/1000)warnings.push('Распознанное время уже прошло — проверьте дату');
- return {...(metadata?{recognized}:{}),title:source.trim().replace(/\s+/g,' '),schedule,duration,priority,projectID,tagIDs,warnings};
+ return {...(metadata?{recognized}:{}),title:source.trim().replace(/\s+/g,' '),schedule,duration,priority,projectID,section,tagIDs,warnings};
 }
