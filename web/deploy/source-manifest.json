@@ -1,15 +1,15 @@
 {
-  "date": "2026-11-17",
+  "date": "2026-11-18",
   "url": "https://tolk.103-102-229-153.sslip.io",
-  "native_source_commit": "e01695cd61bd2a91fd7e07e210e9d899860af54b",
-  "native_release_state": "1.1.8/build46 published Latest2026-11-17T14:58:28Z, release448743867; CI44106021664 success exact e01695c; installed app not replaced by agent",
+  "native_source_commit": "d67f18a621003c4666a2f63f348621e122a008a5",
+  "native_release_state": "1.1.9/build47 published Latest 2026-11-18T19:54:16Z, release 450471947. CI 44382379777 passed on the tagged commit.",
   "tests": {
-    "swift": 191,
+    "swift": 194,
     "python": 45,
-    "javascript": 28,
+    "javascript": 32,
     "release_scripts": 14
   },
-  "verification": "Project/section path static update17Nov17:26MSK: fourchangedpublicfiles matchsource235bd123 onhost/loopback/externalHTTPS incl2versionedURLs; API/auth200/401/403; onlinebackupquick_checkoktwice; norestartsormigrations. Remainingunchangedserver/publichashes retain previous11Nov provenance in earlier fields. PhysicaliPhoneunverified.",
+  "verification": "The 1.1.9 Mac release is published. Web production still serves the previous versions of the five calendar assets, verified over HTTPS. Updating the web bundle requires a new SSH session.",
   "sha256": {
     "public/index.html": "c67f6fbfd844654aa752f3a2072f130c1cac42d0141444b499744aca5354ff29",
     "public/smart.js": "e6372fd7d8d1f9309e28c7644877bf7fa973480757124643fccc7118e1525ea1",
@@ -133,5 +133,10 @@
       "checksums.txt": "a2707623cd284ebd88cf907a88c4780dcf4fa3cfc5c62d77c6220c1095d72353"
     },
     "latest_appcast_matches": true
+  },
+  "calendar_background_119": {
+    "status": "pending_ssh_session",
+    "source_commit": "d67f18a621003c4666a2f63f348621e122a008a5",
+    "baseline_verified_over_https": true
   }
 }
