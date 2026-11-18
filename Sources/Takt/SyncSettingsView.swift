@@ -12,7 +12,7 @@ struct SyncSettingsSections: View {
     var body: some View {
         if let sync = state.syncCoordinator {
             Section("Apple Календарь") {
-                Text("События выбранных календарей появляются рядом с задачами. Изменения подхватываются автоматически; резервная проверка работает в фоне раз в минуту.")
+                Text("В видах «День» и «Неделя» задачи отображаются поверх событий Apple Календаря. Изменения подхватываются автоматически, резервная проверка выполняется раз в минуту.")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
                 Text(sync.appleStatus).font(.system(size: 12)).textSelection(.enabled)
                 if let connection = state.data.appleCalendar {
@@ -134,31 +134,83 @@ struct SyncSettingsSections: View {
 struct ExternalEventCard: View {
     let event: ExternalEvent
     let state: AppState
-    var compact = false
+    var band: CalendarBandLayout?
     @ViewState private var showing = false
     private var source: ExternalCalendar? { state.data.appleCalendar?.calendars.first { $0.id == event.calendarID } }
     var body: some View {
         Button { state.selectedID = event.id; showing = true } label: {
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Image(systemName: "calendar").font(.system(size: compact ? 9 : 11))
-                    Text(event.title).font(.system(size: compact ? 10 : 12, weight: .medium)).lineLimit(compact ? 1 : 3)
-                }
-                if !compact {
-                    Text(event.allDay ? "Весь день" : state.time(event.start) + "–" + state.time(event.end)).font(.system(size: 11)).lineLimit(1)
-                    Text(source?.name ?? "Apple Календарь").font(.system(size: 10)).lineLimit(1)
-                    if event.tentative { Text("Предварительно").font(.system(size: 10)) }
-                    Spacer(minLength: 0)
-                }
-            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(compact ? 3 : 5)
-                .foregroundStyle(.primary)
-                .background(Color(hex: source?.color ?? "598BFF").opacity(0.30), in: RoundedRectangle(cornerRadius: 4))
-                .contentShape(Rectangle()).clipped()
+            if let band {
+                bandLabel(band)
+            } else {
+                compactLabel
+            }
         }.buttonStyle(.plain)
             .help(event.title + " · " + (source?.name ?? "Apple Календарь") + "\nТолько просмотр")
             .contextMenu { Button("Копировать событие") { state.copyCalendarEvent(event) } }
             .accessibilityLabel("Событие Apple Календаря: " + event.title)
+            .accessibilityValue(event.allDay ? "Весь день" : timeRange)
             .popover(isPresented: $showing) { ExternalEventInspector(event: event, source: source, calendar: state.calendar).frame(width: 340) }
+    }
+    private var timeRange: String { state.time(event.start) + "–" + state.time(event.end) }
+    private var compactLabel: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Image(systemName: "calendar").font(.system(size: 9))
+            Text(event.title).font(.system(size: 10, weight: .medium)).lineLimit(1)
+        }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(3)
+            .foregroundStyle(.primary)
+            .background(Color(hex: source?.color ?? "598BFF").opacity(0.30), in: RoundedRectangle(cornerRadius: 4))
+            .contentShape(Rectangle()).clipped()
+    }
+    private func bandLabel(_ band: CalendarBandLayout) -> some View {
+        let tint = Color(hex: source?.color ?? "598BFF")
+        return ZStack(alignment: .topLeading) {
+            Rectangle().fill(tint.opacity(0.12))
+                .frame(width: band.columnWidth, height: band.height).offset(x: band.columnX)
+            RoundedRectangle(cornerRadius: 1.5).fill(tint.opacity(0.85))
+                .frame(width: min(3, band.railWidth), height: band.height).offset(x: band.railX)
+            VStack(alignment: .leading, spacing: 2) {
+                Label {
+                    Text(event.title).lineLimit(band.height >= 53 ? 2 : 1)
+                } icon: {
+                    Image(systemName: "calendar").font(.system(size: 10))
+                }.labelStyle(.titleAndIcon)
+                    .font(.system(size: 12, weight: .medium))
+                if band.height >= 34 {
+                    Text(timeRange).font(.system(size: 11)).monospacedDigit().lineLimit(1)
+                }
+            }.foregroundStyle(.primary)
+                .padding(.horizontal, 3).padding(.top, band.height >= 34 ? 4 : 1)
+                .frame(width: band.labelWidth, height: band.hitHeight, alignment: .topLeading)
+                .clipped().offset(x: band.labelX)
+        }.frame(width: band.width, height: band.hitHeight, alignment: .topLeading)
+            .contentShape(band.hitArea)
+    }
+}
+
+/// All rails stay together at the leading edge so each event can still be opened underneath a task.
+struct CalendarBandLayout {
+    let width: CGFloat
+    let height: CGFloat
+    let lane: Int
+    let count: Int
+
+    static func gutter(width: CGFloat, count: Int) -> CGFloat {
+        min(8 * CGFloat(count), width * 0.22)
+    }
+    private var gutterWidth: CGFloat { Self.gutter(width: width, count: count) }
+    var railWidth: CGFloat { gutterWidth / CGFloat(count) }
+    var railX: CGFloat { CGFloat(lane) * railWidth }
+    var labelWidth: CGFloat { (width - gutterWidth) / CGFloat(count) }
+    var labelX: CGFloat { gutterWidth + CGFloat(lane) * labelWidth }
+    var columnX: CGFloat { lane == 0 ? 0 : labelX }
+    var columnWidth: CGFloat { labelX + labelWidth - columnX }
+    // Keep the tint at its true duration and leave even a one-minute event selectable.
+    var hitHeight: CGFloat { max(18, height) }
+    var hitArea: Path {
+        var path = Path()
+        path.addRect(CGRect(x: railX, y: 0, width: railWidth, height: hitHeight))
+        path.addRect(CGRect(x: labelX, y: 0, width: labelWidth, height: min(54, hitHeight)))
+        return path
     }
 }
 struct ExternalEventInspector: View {
@@ -178,6 +230,7 @@ struct ExternalEventInspector: View {
                 let range = event.interval(in: calendar)
                 Text(stamp(range.start) + " — " + stamp(range.end))
                     .font(.system(size: 12))
+                if event.tentative { Text("Предварительно").font(.system(size: 11)).foregroundStyle(.secondary) }
                 if event.allDay { Text("Весь день · дата окончания не включается").font(.system(size: 11)).foregroundStyle(.secondary) }
                 if !event.location.isEmpty { Label(event.location, systemImage: "mappin.and.ellipse").textSelection(.enabled) }
                 if !event.notes.isEmpty { Text(event.notes).textSelection(.enabled) }

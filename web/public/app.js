@@ -1,5 +1,5 @@
 import {parseQuick} from './smart.js?v=20261117-project-path';
-import {dayAndTime,scheduleFromWall} from './model.js?v=20261111';
+import {calendarWeekLayout,dayAndTime,scheduleFromWall} from './model.js?v=20261118-calendar';
 import * as Pomodoro from './pomodoro.js?v=20261111';
 import {Client, api} from './sync.js?v=20261111';
 const client = new Client();
@@ -651,25 +651,57 @@ function openEvent(record) {
  openEditor(`<form><header class="editor-header"><button type="button" data-cancel class="text-button">Закрыть</button><h2 id="editor-title">Apple Календарь</h2><span></span></header><div class="editor-content"><h3>${escape(record.data.title)}</h3><p>${escape(taskDate(record.data))}</p><p>${escape(record.data.location||'')}</p><p>${escape(record.data.notes||'')}</p><p class="hint">Событие с Mac. Изменяется в Apple Календаре.</p></div></form>`,()=>{});
 }
 let calendarInbox=false;
+function appendCalendarSlot(lane, slot, startHour, scale, calendars) {
+ const {record, start, end, column, columns, rails} = slot;
+ const external = record.kind === 'event';
+ const button = document.createElement('button');
+ button.className = external ? 'calendar-event external-event' : 'calendar-event';
+ button.dataset.event = record.id;
+ button.draggable = !external;
+ button.style.top = ((start - startHour * 60) * scale) + 'px';
+ button.style.height = Math.max(external ? 1 : 26, (end - start) * scale) + 'px';
+ button.style.setProperty('--column-start', column / columns);
+ button.style.setProperty('--column-width', 1 / columns);
+ button.title = record.data.title + ' · ' + slot.intervalLabel;
+ button.setAttribute('aria-label', (external ? 'Apple Календарь. ' : '') + button.title);
+ let label = button;
+ if (external) {
+  const color = calendars.get(record.data.calendarID)?.color;
+  if (typeof color === 'string' && /^#?[0-9a-f]{6}$/i.test(color)) {
+   button.style.setProperty('--calendar-source-color', '#' + color.replace('#',''));
+  }
+  button.style.setProperty('--rail-index', column);
+  button.style.setProperty('--rail-width', 'min(8px, ' + 22 / columns + '%)');
+  label = document.createElement('span');
+  label.className = 'calendar-band';
+  button.append(label);
+ } else {
+  button.style.setProperty('--rail-space', 'min(' + rails * 8 + 'px, 22%)');
+ }
+ const title = document.createElement('strong'), time = document.createElement('small');
+ title.textContent = record.data.title;
+ time.textContent = slot.timeLabel;
+ label.append(title, time);
+ lane.append(button);
+}
+
 function renderCalendar(content,tasks) {
  const chosen=selectedDay||today(),anchor=new Date(chosen+'T12:00:00Z'),offset=(anchor.getUTCDay()+6)%7;
  anchor.setUTCDate(anchor.getUTCDate()-offset);
  const days=Array.from({length:7},(_,i)=>{const d=new Date(anchor);d.setUTCDate(d.getUTCDate()+i);return d.toISOString().slice(0,10);});
- const events=calendarEvents(),scheduled=tasks.concat(events).filter(r=>days.includes(r.data.date));
- const minute=r=>Number((r.data.time||'00:00').slice(0,2))*60+Number((r.data.time||'00:00').slice(3));
- const timed=scheduled.filter(r=>r.data.time);
- const start=Math.min(settings().startHour??7,...timed.map(r=>Math.floor(minute(r)/60)));
- const end=Math.min(24,Math.max(settings().endHour??23,...timed.map(r=>Math.ceil((minute(r)+(r.data.duration||30))/60))));
+ const scheduled=tasks.concat(calendarEvents());
+ const slotsByDay=calendarWeekLayout(scheduled,days,settings().timeZone||'Europe/Moscow');
+ const timed=Array.from(slotsByDay.values()).flat();
+ const calendars=new Map((settings().integrations?.appleCalendar?.calendars||[]).map(c=>[c.id,c]));
+ const start=Math.min(settings().startHour??7,...timed.map(slot=>Math.floor(slot.start/60)));
+ const end=Math.min(24,Math.max(settings().endHour??23,...timed.map(slot=>Math.ceil(slot.end/60))));
  const scale=(settings().hourHeight||96)/60,height=(end-start)*60*scale;
  const queue=tasks.filter(r=>!r.data.completed&&!r.data.time&&(!calendarInbox||!r.data.projectID));
- content.innerHTML=`<div class="calendar-controls"><button class="secondary" id="calendar-prev" aria-label="Предыдущая неделя">${icon('back')}</button><button class="secondary" id="calendar-now">Сегодня</button><button class="secondary" id="calendar-next" aria-label="Следующая неделя">${icon('chevron')}</button><span>${escape(dateLabel(days[0]))} – ${escape(dateLabel(days[6]))}</span></div><div class="calendar-layout"><section class="calendar-scroll" aria-label="Неделя"><div class="week-header"><div></div>${days.map(day=>`<div class="day-heading ${day===today()?'current-day':''}"><strong>${escape(new Date(day+'T12:00:00Z').toLocaleDateString('ru-RU',{weekday:'short',day:'numeric',timeZone:'UTC'}))}</strong>${scheduled.filter(r=>r.data.date===day&&!r.data.time).map(r=>`<button data-calendar-task="${r.id}" class="all-day-task">${escape(r.data.title)}</button>`).join('')}</div>`).join('')}</div><div class="week-grid"><div class="time-axis">${Array.from({length:end-start},(_,i)=>`<span data-hour="${i}">${String(start+i).padStart(2,'0')}:00</span>`).join('')}</div>${days.map(day=>`<div class="day-lane" data-day="${day}">${scheduled.filter(r=>r.data.date===day&&r.data.time).map(r=>`<button class="calendar-event ${r.kind==='event'?'external-event':''}" draggable="${r.kind!=='event'}" data-event="${r.id}"><strong>${escape(r.data.title)}</strong><small>${escape(r.data.time)}</small></button>`).join('')}</div>`).join('')}</div></section><aside class="planning-queue" id="calendar-queue"><header><h2>Распределить задачи</h2><button id="queue-add" aria-label="Добавить задачу">${icon('plus')}</button></header><div class="segmented"><button id="queue-all" ${!calendarInbox?'aria-current="true"':''}>Все</button><button id="queue-inbox" ${calendarInbox?'aria-current="true"':''}>Входящие</button></div><p class="hint">Перетащите задачу на время</p>${queue.map(r=>`<button class="queue-task" draggable="true" data-queue-task="${r.id}"><strong>${escape(r.data.title)}</strong><small>${escape(projectName(r.data.projectID))} · ${r.data.duration||30} мин</small></button>`).join('')||'<p class="hint">Перетащите сюда задачу из календаря.</p>'}</aside></div>`;
+ content.innerHTML=`<div class="calendar-controls"><button class="secondary" id="calendar-prev" aria-label="Предыдущая неделя">${icon('back')}</button><button class="secondary" id="calendar-now">Сегодня</button><button class="secondary" id="calendar-next" aria-label="Следующая неделя">${icon('chevron')}</button><span>${escape(dateLabel(days[0]))} – ${escape(dateLabel(days[6]))}</span></div><div class="calendar-layout"><section class="calendar-scroll" aria-label="Неделя"><div class="week-header"><div></div>${days.map(day=>`<div class="day-heading ${day===today()?'current-day':''}"><strong>${escape(new Date(day+'T12:00:00Z').toLocaleDateString('ru-RU',{weekday:'short',day:'numeric',timeZone:'UTC'}))}</strong>${scheduled.filter(r=>r.data.date===day&&!r.data.time).map(r=>`<button data-calendar-task="${r.id}" class="all-day-task">${escape(r.data.title)}</button>`).join('')}</div>`).join('')}</div><div class="week-grid"><div class="time-axis">${Array.from({length:end-start},(_,i)=>`<span data-hour="${i}">${String(start+i).padStart(2,'0')}:00</span>`).join('')}</div>${days.map(day=>`<div class="day-lane" data-day="${day}"></div>`).join('')}</div></section><aside class="planning-queue" id="calendar-queue"><header><h2>Распределить задачи</h2><button id="queue-add" aria-label="Добавить задачу">${icon('plus')}</button></header><div class="segmented"><button id="queue-all" ${!calendarInbox?'aria-current="true"':''}>Все</button><button id="queue-inbox" ${calendarInbox?'aria-current="true"':''}>Входящие</button></div><p class="hint">Перетащите задачу на время</p>${queue.map(r=>`<button class="queue-task" draggable="true" data-queue-task="${r.id}"><strong>${escape(r.data.title)}</strong><small>${escape(projectName(r.data.projectID))} · ${r.data.duration||30} мин</small></button>`).join('')||'<p class="hint">Перетащите сюда задачу из календаря.</p>'}</aside></div>`;
  content.querySelector('.week-grid').style.height=height+'px';content.querySelectorAll('[data-hour]').forEach(el=>el.style.top=(Number(el.dataset.hour)*60*scale)+'px');
  content.querySelectorAll('.day-lane').forEach(lane=>{
   lane.style.backgroundImage=`repeating-linear-gradient(to bottom,transparent 0,transparent ${60*scale-1}px,var(--line) ${60*scale-1}px,var(--line) ${60*scale}px)`;
-  const list=timed.filter(r=>r.data.date===lane.dataset.day).sort((a,b)=>minute(a)-minute(b));
-  let group=[],groupEnd=0;
-  function place(){if(!group.length)return;const lanes=[];const placements=[];for(const r of group){const index=lanes.findIndex(end=>end<=minute(r));const col=index<0?lanes.length:index;lanes[col]=minute(r)+(r.data.duration||30);placements.push([r,col]);}for(const [r,col]of placements){const button=lane.querySelector(`[data-event="${r.id}"]`);button.style.top=((minute(r)-start*60)*scale)+'px';button.style.height=(Math.max(26,(r.data.duration||30)*scale))+'px';button.style.left=`calc(${col/lanes.length*100}% + 3px)`;button.style.width=`calc(${100/lanes.length}% - 6px)`;}group=[];}
-  for(const r of list){if(group.length&&minute(r)>=groupEnd)place();group.push(r);groupEnd=Math.max(groupEnd,minute(r)+(r.data.duration||30));}place();
+  for(const slot of slotsByDay.get(lane.dataset.day)) appendCalendarSlot(lane,slot,start,scale,calendars);
   lane.ondragover=e=>e.preventDefault();lane.ondrop=guarded(async e=>{e.preventDefault();const id=e.dataTransfer.getData('text/plain');const r=tasks.find(r=>r.id===id);if(!r)return;const m=Math.max(0,Math.min(1425,Math.round((start*60+(e.clientY-lane.getBoundingClientRect().top)/scale)/15)*15));await client.mutate('task',id,{date:lane.dataset.day,time:String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')},r);render();});
  });
  content.querySelectorAll('[draggable=true]').forEach(b=>b.ondragstart=e=>e.dataTransfer.setData('text/plain',b.dataset.event||b.dataset.queueTask));

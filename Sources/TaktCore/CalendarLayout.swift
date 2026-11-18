@@ -6,8 +6,13 @@ public struct EventPlacement: Identifiable, Sendable {
     public let endMinute: Double
     public let lane: Int
     public let laneCount: Int
+    public let isBackground: Bool
+    public let overlapsBackground: Bool
+    /// All tasks in one overlap group share a leading gutter so their lanes stay aligned.
+    public let backgroundLaneCount: Int
 }
 public enum CalendarLayout {
+    private typealias Segment = (id: UUID, start: Double, end: Double)
     public static func startHour(preferred: Int, days: [Date], items: [Item], calendar: Calendar, external: [ExternalEvent] = []) -> Int {
         days.flatMap { placements(items: items, day: $0, calendar: calendar, external: external) }
             .reduce(preferred) { min($0, Int($1.startMinute / 60)) }
@@ -15,35 +20,64 @@ public enum CalendarLayout {
     public static func placements(items: [Item], day: Date, calendar: Calendar, external: [ExternalEvent] = []) -> [EventPlacement] {
         let start = calendar.startOfDay(for: day)
         guard let end = calendar.date(byAdding: .day, value: 1, to: start) else { return [] }
-        let tasks: [(UUID, Date, Date)] = items.compactMap { item in
-            guard item.kind == .task, !item.deleted, item.schedule.isTimed,
-                  let s = item.schedule.date, let e = item.end, s < end, e > start else { return nil }
-            return (item.id, s, e)
-        }
-        let events = external.filter { !$0.allDay }.map { ($0.id, $0.start, $0.end) }
         func minute(_ date: Date) -> Double {
             if date <= start { return 0 }; if date >= end { return 1440 }
             let parts = calendar.dateComponents([.hour, .minute, .second], from: date)
             return Double((parts.hour ?? 0) * 60 + (parts.minute ?? 0)) + Double(parts.second ?? 0) / 60
         }
-        let segments: [(UUID, Double, Double)] = (tasks + events).compactMap { id, s, e in
-            guard s < end, e > start else { return nil }
-            return (id, minute(max(s, start)), minute(min(e, end)))
-        }.sorted { $0.1 == $1.1 ? ($0.2 == $1.2 ? $0.0.uuidString < $1.0.uuidString : $0.2 > $1.2) : $0.1 < $1.1 }
-        var output: [EventPlacement] = [], cluster: [(UUID, Double, Double)] = [], clusterEnd = -1.0
-        func flush(_ group: [(UUID, Double, Double)]) -> [EventPlacement] {
-            var ends: [Double] = [], assigned: [(UUID, Double, Double, Int)] = []
-            for event in group {
-                let lane = ends.firstIndex(where: { $0 <= event.1 }) ?? ends.count
-                if lane == ends.count { ends.append(event.2) } else { ends[lane] = event.2 }
-                assigned.append((event.0, event.1, event.2, lane))
+        func segment(_ id: UUID, _ from: Date, _ to: Date) -> Segment? {
+            guard from < end, to > start, to > from else { return nil }
+            let lower = minute(from), upper = minute(to)
+            // An interval inside the repeated hour can end at an earlier wall-clock time.
+            if upper <= lower {
+                let elapsed = min(to, end).timeIntervalSince(max(from, start)) / 60
+                return (id, lower, min(1440, lower + elapsed))
             }
-            return assigned.map { EventPlacement(id: $0.0, startMinute: $0.1, endMinute: $0.2, lane: $0.3, laneCount: ends.count) }
+            return (id, lower, upper)
         }
-        for event in segments {
-            if event.1 >= clusterEnd, !cluster.isEmpty { output += flush(cluster); cluster = [] }
-            cluster.append(event); clusterEnd = max(event.2, cluster.isEmpty ? -1 : clusterEnd)
+        let events = external.compactMap { event in
+            event.allDay ? nil : segment(event.id, event.start, event.end)
         }
-        return output + flush(cluster)
+        let tasks = items.compactMap { item -> Segment? in
+            guard item.kind == .task, !item.deleted, item.schedule.isTimed,
+                  let from = item.schedule.date, let to = item.end else { return nil }
+            return segment(item.id, from, to)
+        }
+        let backgrounds = assignLanes(events, isBackground: true)
+        return backgrounds + assignLanes(tasks, isBackground: false, backgrounds: backgrounds)
+    }
+
+    private static func assignLanes(_ segments: [Segment], isBackground: Bool, backgrounds: [EventPlacement] = []) -> [EventPlacement] {
+        let ordered = segments.sorted { a, b in
+            if a.start != b.start { return a.start < b.start }
+            if a.end != b.end { return a.end > b.end }
+            return a.id.uuidString < b.id.uuidString
+        }
+        var output: [EventPlacement] = []
+        var cluster: [(event: Segment, lane: Int)] = []
+        var ends: [Double] = []
+        var clusterEnd = -Double.infinity
+        func flush() {
+            guard let first = cluster.first else { return }
+            let nearby = backgrounds.filter { $0.startMinute < clusterEnd && first.event.start < $0.endMinute }
+            let railCount = nearby.map(\.laneCount).max() ?? 0
+            for (event, lane) in cluster {
+                let overlapsBackground = nearby.contains { $0.startMinute < event.end && event.start < $0.endMinute }
+                output.append(EventPlacement(id: event.id, startMinute: event.start, endMinute: event.end,
+                                             lane: lane, laneCount: ends.count, isBackground: isBackground,
+                                             overlapsBackground: overlapsBackground, backgroundLaneCount: railCount))
+            }
+            cluster.removeAll(keepingCapacity: true)
+            ends.removeAll(keepingCapacity: true)
+        }
+        for event in ordered {
+            if event.start >= clusterEnd { flush() }
+            let lane = ends.firstIndex(where: { $0 <= event.start }) ?? ends.count
+            if lane == ends.count { ends.append(event.end) } else { ends[lane] = event.end }
+            cluster.append((event, lane))
+            clusterEnd = max(clusterEnd, event.end)
+        }
+        flush()
+        return output
     }
 }

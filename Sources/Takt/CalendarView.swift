@@ -111,7 +111,7 @@ struct CalendarView: View {
                                             .popover(isPresented: editorBinding(item.id)) { ItemInspector(state: state, id: item.id).frame(width: 340, height: 620) }
                                     }
                                     ForEach(state.externalEvents.filter { $0.allDay && $0.intersects(day: day, calendar: state.calendar) }) { event in
-                                        ExternalEventCard(event: event, state: state, compact: true).frame(height: 26)
+                                        ExternalEventCard(event: event, state: state).frame(height: 26)
                                     }
                                 }.padding(3).frame(width: dayWidth, alignment: .top).frame(minHeight: 38)
                                     .contentShape(Rectangle())
@@ -168,6 +168,9 @@ struct DayColumn: View {
     private var height: Double { Double(state.data.preferences.endHour - startHour) * state.data.preferences.hourHeight }
     private var pixels: Double { state.data.preferences.hourHeight / 60 }
     var body: some View {
+        let items = state.calendarItems
+        let events = state.externalEvents
+        let placements = CalendarLayout.placements(items: items, day: day, calendar: state.calendar, external: events)
         GeometryReader { geometry in
             ZStack(alignment: .topLeading) {
                 Rectangle().fill(state.calendar.isDateInToday(day) ? Palette.accent.opacity(0.025) : .clear)
@@ -208,23 +211,25 @@ struct DayColumn: View {
                         .overlay(alignment: .topLeading) { Text("\(date(a).map(state.time) ?? "") · \(max(15, b - a)) мин").font(.system(size: 11)).padding(5) }
                         .offset(x: 3, y: Double(a - Int(startMinute)) * pixels).allowsHitTesting(false)
                 }
-                let placements = CalendarLayout.placements(items: state.calendarItems, day: day, calendar: state.calendar, external: state.externalEvents)
                 ForEach(placements) { placement in
-                    if let item = state.calendarItems.first(where: { $0.id == placement.id }) {
-                        let clippedStart = max(startMinute, placement.startMinute)
-                        let clippedEnd = min(Double(state.data.preferences.endHour * 60), placement.endMinute)
-                        if clippedEnd > clippedStart {
-                            let width = max(15, (geometry.size.width - 5) / Double(placement.laneCount) - 3)
-                            CalendarEvent(state: state, item: item, width: width, height: max(18, (clippedEnd - clippedStart) * pixels), pixelsPerMinute: pixels)
-                                .offset(x: 3 + Double(placement.lane) * (width + 3), y: (clippedStart - startMinute) * pixels)
-                        }
-                    } else if let event = state.externalEvents.first(where: { $0.id == placement.id }) {
-                        let clippedStart = max(startMinute, placement.startMinute)
-                        let clippedEnd = min(Double(state.data.preferences.endHour * 60), placement.endMinute)
-                        if clippedEnd > clippedStart {
-                            let width = max(15, (geometry.size.width - 5) / Double(placement.laneCount) - 3)
-                            ExternalEventCard(event: event, state: state).frame(width: width, height: max(18, (clippedEnd - clippedStart) * pixels))
-                                .offset(x: 3 + Double(placement.lane) * (width + 3), y: (clippedStart - startMinute) * pixels)
+                    let clippedStart = max(startMinute, placement.startMinute)
+                    let clippedEnd = min(Double(state.data.preferences.endHour * 60), placement.endMinute)
+                    if clippedEnd > clippedStart {
+                        let y = (clippedStart - startMinute) * pixels
+                        let intervalHeight = (clippedEnd - clippedStart) * pixels
+                        let availableWidth = max(0, geometry.size.width - 5)
+                        if placement.isBackground, let event = events.first(where: { $0.id == placement.id }) {
+                            let band = CalendarBandLayout(width: availableWidth, height: intervalHeight, lane: placement.lane, count: placement.laneCount)
+                            ExternalEventCard(event: event, state: state, band: band)
+                                .frame(width: availableWidth, height: band.hitHeight)
+                                .offset(x: 3, y: y)
+                        } else if let item = items.first(where: { $0.id == placement.id }) {
+                            let gutter = CalendarBandLayout.gutter(width: availableWidth, count: placement.backgroundLaneCount)
+                            let laneWidth = (availableWidth - gutter) / Double(placement.laneCount)
+                            let left = gutter + Double(placement.lane) * laneWidth
+                            CalendarEvent(state: state, item: item, width: max(1, laneWidth - 3), height: max(18, intervalHeight),
+                                          pixelsPerMinute: pixels, overBackground: placement.overlapsBackground)
+                                .offset(x: 3 + left, y: y)
                         }
                     }
                 }
@@ -284,6 +289,7 @@ struct CalendarEvent: View {
     let width: Double
     let height: Double
     let pixelsPerMinute: Double
+    var overBackground = false
     @ViewState private var resizeDelta = 0.0
     @ViewState private var resizeEdge: Int?
     private var constrainedDelta: Double { CalendarResizeMath.clampedDelta(resizeDelta, top: resizeEdge == 1, duration: item.duration, pixels: pixelsPerMinute) }
@@ -350,6 +356,7 @@ struct CalendarEvent: View {
             .frame(width: width, height: max(18, height + bottomDrag - topDrag), alignment: .topLeading)
             .foregroundStyle(emphasized ? emphasizedText : item.completed ? Color.secondary : Color.primary)
             .background(Color(hex: state.color(item)).opacity(emphasized ? 1 : item.completed ? 0.18 : 0.44), in: RoundedRectangle(cornerRadius: 4))
+            .background { if overBackground { RoundedRectangle(cornerRadius: 4).fill(Palette.canvas) } }
             .overlay { RoundedRectangle(cornerRadius: 4).stroke(Color(hex: state.color(item)).opacity(state.selectedID == item.id ? 1 : 0.6), lineWidth: 1) }
             .contentShape(Rectangle()).onTapGesture { state.selectCalendar(item.id) }
             .onDrag { state.beginDrag(item, offset: Int((pointerY / pixelsPerMinute / 15).rounded(.down)) * 15) }
@@ -516,7 +523,7 @@ struct MonthGrid: View {
                             }
                             let external = state.externalEvents.filter { $0.intersects(day: day, calendar: state.calendar) }
                             ForEach(external.prefix(max(0, 3 - min(3, items.count)))) { event in
-                                ExternalEventCard(event: event, state: state, compact: true).frame(height: 22)
+                                ExternalEventCard(event: event, state: state).frame(height: 22)
                             }
                             if items.count + external.count > 3 { Button("Ещё \(items.count + external.count - 3)") { state.anchor = day; state.calendarMode = "День" }.buttonStyle(.plain).font(.system(size: 10)) }
                             Spacer(minLength: 0)

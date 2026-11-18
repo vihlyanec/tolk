@@ -113,12 +113,16 @@ private func connected() -> Snapshot {
     for i in 1...30 { cache.replace(AppleCalendarWindow(start: now.addingTimeInterval(Double(i)), end: now.addingTimeInterval(Double(i + 1)), events: [])) }
     #expect(cache.windows.count == 24)
 }
-@Test func appleAndTasksUseJointOverlapLanes() {
+@Test func appleEventAndTaskStartingTogetherUseSeparateLayers() throws {
     let c = Dates.calendar(), day = c.startOfDay(for: Date()), start = day.addingTimeInterval(36000)
     var task = Item(title: "Работа"); task.schedule = .timed(start); task.duration = 60
     let event = ExternalEvent(calendarID: "a", sourceID: "s", eventID: "1", title: "Встреча", start: start, end: start.addingTimeInterval(1800))
     let lanes = CalendarLayout.placements(items: [task], day: day, calendar: c, external: [event])
-    #expect(lanes.count == 2 && lanes.allSatisfy { $0.laneCount == 2 })
+    #expect(lanes.map(\.id) == [event.id, task.id])
+    let background = try #require(lanes.first { $0.id == event.id })
+    let foreground = try #require(lanes.first { $0.id == task.id })
+    #expect(background.isBackground && background.laneCount == 1)
+    #expect(!foreground.isBackground && foreground.overlapsBackground && foreground.laneCount == 1)
 }
 @Test func appleDeletedSpanningEventDoesNotSurviveInOlderOverlappingCache() {
     var cache = AppleCalendarState(); cache.selected = ["a"]

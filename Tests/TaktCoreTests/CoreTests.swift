@@ -51,6 +51,68 @@ private func date(_ day: Int = 25, _ hour: Int = 12, _ minute: Int = 0) -> Date 
     let clipped = CalendarLayout.placements(items: [overnight], day: date(), calendar: calendar)
     #expect(clipped.first?.startMinute == 0 && clipped.first?.endMinute == 90)
 }
+
+@Test func simultaneousAppleEventsDoNotChangeTaskLaneGroups() throws {
+    let shift = ExternalEvent(calendarID: "work", sourceID: "apple", eventID: "shift",
+                              title: "Смена", start: date(25, 15), end: date(25, 23))
+    let meeting = ExternalEvent(calendarID: "other", sourceID: "apple", eventID: "meeting",
+                                title: "Встреча", start: date(25, 17), end: date(25, 20))
+    var early = Item(title: "Документы"), visit = Item(title: "Приезд"), call = Item(title: "Звонок")
+    early.schedule = .timed(date(25, 16)); early.duration = 30
+    visit.schedule = .timed(date(25, 19)); visit.duration = 180
+    call.schedule = .timed(date(25, 20)); call.duration = 15
+    let layout = CalendarLayout.placements(items: [call, visit, early], day: date(), calendar: calendar,
+                                           external: [meeting, shift])
+    let backgrounds = layout.filter(\.isBackground)
+    #expect(Set(backgrounds.map(\.id)) == Set([shift.id, meeting.id]))
+    #expect(Set(backgrounds.map(\.lane)) == Set([0, 1]))
+    #expect(backgrounds.allSatisfy { $0.laneCount == 2 })
+    let foregrounds = layout.filter { !$0.isBackground }
+    #expect(foregrounds.count == 3 && foregrounds.allSatisfy(\.overlapsBackground))
+    #expect(foregrounds.first { $0.id == early.id }?.laneCount == 1)
+    let visitPlacement = try #require(foregrounds.first { $0.id == visit.id })
+    let callPlacement = try #require(foregrounds.first { $0.id == call.id })
+    #expect(visitPlacement.laneCount == 2 && callPlacement.laneCount == 2)
+    #expect(visitPlacement.lane != callPlacement.lane)
+}
+
+@Test func backgroundOverlapUsesClippedHalfOpenIntervalsAndSkipsAllDayEvents() throws {
+    let night = ExternalEvent(calendarID: "work", sourceID: "apple", eventID: "night",
+                              title: "Ночная смена", start: date(24, 23), end: date(25, 7))
+    let birthday = ExternalEvent(calendarID: "family", sourceID: "apple", eventID: "birthday",
+                                 title: "День рождения", start: date(25, 0), end: date(26, 0), allDay: true)
+    let nextNight = ExternalEvent(calendarID: "work", sourceID: "apple", eventID: "next",
+                                  title: "Следующая смена", start: date(26, 0), end: date(26, 7))
+    var dawn = Item(title: "Дорога"), morning = Item(title: "После смены")
+    dawn.schedule = .timed(date(25, 6, 45)); dawn.duration = 30
+    morning.schedule = .timed(date(25, 7)); morning.duration = 60
+    let events = [night, birthday, nextNight]
+    let layout = CalendarLayout.placements(items: [dawn, morning], day: date(), calendar: calendar, external: events)
+    #expect(Set(layout.map(\.id)) == Set([night.id, dawn.id, morning.id]))
+    let background = try #require(layout.first { $0.id == night.id })
+    #expect(background.isBackground && background.startMinute == 0 && background.endMinute == 420)
+    #expect(layout.first { $0.id == dawn.id }?.overlapsBackground == true)
+    #expect(layout.first { $0.id == morning.id }?.overlapsBackground == false)
+    #expect(CalendarLayout.startHour(preferred: 9, days: [date()], items: [], calendar: calendar, external: events) == 0)
+}
+
+@Test func appleBackgroundAcrossRepeatedHourKeepsAVisibleInterval() throws {
+    let eastern = Dates.calendar(zone: "America/New_York")
+    let iso = ISO8601DateFormatter()
+    let start = try #require(iso.date(from: "2026-11-01T01:45:00-04:00"))
+    let repeatedEnd = try #require(iso.date(from: "2026-11-01T01:15:00-05:00"))
+    let laterEnd = try #require(iso.date(from: "2026-11-01T02:45:00-05:00"))
+    let folded = ExternalEvent(calendarID: "work", sourceID: "apple", eventID: "short",
+                               title: "Передача смены", start: start, end: repeatedEnd)
+    let spanning = ExternalEvent(calendarID: "work", sourceID: "apple", eventID: "long",
+                                 title: "Дежурство", start: start, end: laterEnd)
+    let layout = CalendarLayout.placements(items: [], day: start, calendar: eastern, external: [folded, spanning])
+    let short = try #require(layout.first { $0.id == folded.id })
+    let long = try #require(layout.first { $0.id == spanning.id })
+    #expect(short.isBackground && short.startMinute == 105 && short.endMinute == 135)
+    #expect(long.isBackground && long.startMinute == 105 && long.endMinute == 165)
+}
+
 @Test func databaseRoundTripBackupAndRestore() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }

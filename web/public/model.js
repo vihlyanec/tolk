@@ -38,3 +38,80 @@ export function canonicalPatch(kind, patch, baseline, zone='Europe/Moscow') {
   }
   return patch;
 }
+
+// Each group shares columns until all its intervals end; touching edges start a new group.
+function overlapGroups(slots) {
+  const groups = [];
+  const sorted = [...slots].sort((a, b) => a.start - b.start || b.end - a.end || a.record.id.localeCompare(b.record.id));
+  let activeEnd = -1, group, columnEnds;
+  for (const slot of sorted) {
+    if (slot.start >= activeEnd) {
+      group = [];
+      groups.push(group);
+      columnEnds = [];
+    }
+    let column = columnEnds.findIndex(end => end <= slot.start);
+    if (column < 0) column = columnEnds.length;
+    columnEnds[column] = slot.end;
+    activeEnd = Math.max(activeEnd, slot.end);
+    group.push({...slot, column});
+  }
+  return groups.map(group => {
+    const columns = Math.max(...group.map(slot => slot.column)) + 1;
+    return group.map(slot => ({...slot, columns}));
+  });
+}
+
+export function calendarDayLayout(slots) {
+  const backgrounds = overlapGroups(slots.filter(slot => slot.record.kind === 'event')).flat();
+  const foreground = overlapGroups(slots.filter(slot => slot.record.kind !== 'event'));
+  return backgrounds.concat(foreground.flatMap(group => {
+    const start = group[0].start, end = Math.max(...group.map(slot => slot.end));
+    // Leave the colored rails selectable even if a task covers the entire background.
+    const rails = backgrounds.reduce((count, slot) =>
+      slot.start < end && start < slot.end ? Math.max(count, slot.columns) : count, 0);
+    return group.map(slot => ({...slot, rails}));
+  }));
+}
+
+const minutesOfDay = wall => Number(wall.time.slice(0,2)) * 60 + Number(wall.time.slice(3,5));
+const civilInstant = wall => Date.parse(wall.date + 'T' + wall.time + ':00Z') / 1000;
+
+export function calendarWeekLayout(records, days, zone) {
+  const slots = new Map(days.map(day => [day, []]));
+  const earliestPossible = Date.parse(days[0] + 'T00:00:00Z') / 1000 - 86400;
+  for (const record of records) {
+    const data = record.data;
+    if (!data.time || data.date > days.at(-1)) continue;
+    const first = {date:data.date, time:data.time};
+    const isEvent = record.kind === 'event';
+    const instant = isEvent ? data.start : data.schedule?.instant;
+    // Legacy tasks without a timed wire schedule retain their stored civil clock.
+    const hasInstant = Number.isFinite(instant);
+    const startInstant = hasInstant ? instant : civilInstant(first);
+    if (!Number.isFinite(startInstant)) continue;
+    const endInstant = isEvent && Number.isFinite(data.end) ? data.end : startInstant + (data.duration || 30) * 60;
+    if (endInstant < earliestPossible) continue;
+    const last = dayAndTime(endInstant, hasInstant ? zone : 'UTC');
+    if (last.date < days[0]) continue;
+    const overnight = first.date !== last.date;
+    const startOffset = civilInstant(first) / 60 - Math.floor(startInstant / 60);
+    const endOffset = civilInstant(last) / 60 - Math.floor(endInstant / 60);
+    function endpoint(wall, offset) {
+      const date = overnight ? wall.date.split('-').reverse().join('.') + ' ' : '';
+      if (startOffset === endOffset) return date + wall.time;
+      const hours = Math.floor(Math.abs(offset) / 60), minutes = Math.abs(offset) % 60;
+      return date + wall.time + ' UTC' + (offset < 0 ? '−' : '+') + hours + (minutes ? ':' + String(minutes).padStart(2,'0') : '');
+    }
+    const intervalLabel = endpoint(first,startOffset) + '–' + endpoint(last,endOffset);
+    for (const [day, daySlots] of slots) {
+      if (day < first.date || day > last.date) continue;
+      const start = day === first.date ? minutesOfDay(first) : 0;
+      let end = day === last.date ? minutesOfDay(last) : 1440;
+      // A repeated hour has only one row in the grid. Keep the real endpoints in the label.
+      if (end <= start && day === first.date) end = Math.min(1440, start + Math.max(1, (endInstant - startInstant) / 60));
+      if (end > start) daySlots.push({record, start, end, intervalLabel, timeLabel:first.time + '–' + last.time});
+    }
+  }
+  return new Map(Array.from(slots, ([day, daySlots]) => [day, calendarDayLayout(daySlots)]));
+}
