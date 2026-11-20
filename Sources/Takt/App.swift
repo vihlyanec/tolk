@@ -134,8 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         if todayPopover == nil {
             let popover = NSPopover()
             popover.behavior = .transient
-            popover.contentSize = NSSize(width: 380, height: 560)
-            popover.contentViewController = NSHostingController(rootView: MenuBarTodayView(state: state,
+            let content = NSHostingController(rootView: MenuBarTodayView(state: state,
                 openTask: { [weak self] id in
                     guard let self else { return }
                     self.todayPopover?.performClose(nil)
@@ -146,8 +145,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
                 }, openSettings: { [weak self] in
                     self?.todayPopover?.performClose(nil); self?.openSettings()
                 }, close: { [weak self] in self?.todayPopover?.performClose(nil) }))
+            content.sizingOptions = []
+            popover.contentViewController = content
             todayPopover = popover
         }
+        let visible = (button.window?.screen ?? activeScreen())?.visibleFrame.size ?? NSSize(width: 380, height: 580)
+        todayPopover?.contentSize = NSSize(width: min(380, visible.width), height: min(560, visible.height - 20))
         todayPopover?.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         todayPopover?.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         todayPopover?.contentViewController?.view.window?.makeKey()
@@ -172,11 +175,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1440, height: 880), styleMask: [.titled,.closable,.miniaturizable,.resizable], backing: .buffered, defer: false)
             window.title = state.isDemo ? "Толк — демонстрация, данные не сохраняются" : "Толк"
             if state.isSyncTest { window.title = "Толк Sync Test — отдельные тестовые данные" }
-            window.contentMinSize = NSSize(width: 1080, height: 640)
-            window.contentView = host(MainView(state: state)); window.center(); window.delegate = self
+            let content = host(MainView(state: state))
+            content.sizingOptions = []
+            window.contentView = content; window.center(); window.delegate = self
             window.isReleasedWhenClosed = false; window.setFrameAutosaveName("TaktMain"); mainWindow = window
         }
+        if let mainWindow { fitWorkspaceWindow(mainWindow, minimum: WorkspaceGeometry.minimumWindow) }
         mainWindow?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+    }
+    private func fitWorkspaceWindow(_ window: NSWindow, minimum: NSSize, onlyIfOversized: Bool = false) {
+        guard !window.styleMask.contains(.fullScreen), let screen = window.screen ?? activeScreen() else { return }
+        let visible = screen.visibleFrame
+        let available = window.contentRect(forFrameRect: visible).size
+        window.contentMinSize = NSSize(width: min(minimum.width, available.width), height: min(minimum.height, available.height))
+        let current = window.frame
+        if onlyIfOversized && current.width <= visible.width && current.height <= visible.height { return }
+        let fitted = WorkspaceGeometry.fittedFrame(current, in: visible)
+        if fitted != current { window.setFrame(fitted, display: true) }
+    }
+    func windowDidChangeScreen(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        if window === mainWindow { fitWorkspaceWindow(window, minimum: WorkspaceGeometry.minimumWindow, onlyIfOversized: true) }
+        if window === settingsWindow { fitWorkspaceWindow(window, minimum: WorkspaceGeometry.minimumSettings, onlyIfOversized: true) }
+    }
+    func applicationDidChangeScreenParameters(_ notification: Notification) {
+        if let mainWindow { fitWorkspaceWindow(mainWindow, minimum: WorkspaceGeometry.minimumWindow) }
+        if let settingsWindow { fitWorkspaceWindow(settingsWindow, minimum: WorkspaceGeometry.minimumSettings) }
     }
     private func activeScreen() -> NSScreen? {
         NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
@@ -194,12 +218,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         panel.collectionBehavior = [.canJoinAllSpaces,.fullScreenAuxiliary]
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true
         panel.isMovableByWindowBackground = true
-        panel.contentView = host(QuickCaptureView(state: state, initialDate: date, initialDuration: duration, heightChanged: { [weak self, weak panel] height in
+        let width = min(640, screen.visibleFrame.width)
+        panel.contentView = host(QuickCaptureView(state: state, initialDate: date, initialDuration: duration, width: width, heightChanged: { [weak self, weak panel] height in
             guard let self, let panel else { return }
-            let frame = self.bounded(NSPoint(x: panel.frame.minX, y: panel.frame.maxY - height), size: NSSize(width: 640, height: height), screen: screen)
+            let frame = self.bounded(NSPoint(x: panel.frame.minX, y: panel.frame.maxY - height), size: NSSize(width: width, height: height), screen: screen)
             panel.setFrame(frame, display: true)
         }) { [weak self] in self?.closeQuick() })
-        let size = NSSize(width: 640, height: 62)
+        let size = NSSize(width: width, height: 62)
         panel.setFrame(bounded(NSPoint(x: screen.visibleFrame.midX - size.width / 2, y: screen.visibleFrame.midY - size.height / 2 + 100), size: size, screen: screen), display: true)
         panel.escape = { [weak self] in
             self?.state.clearQuickDraft()
@@ -291,10 +316,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     }
     private func openSettings() {
         if settingsWindow == nil {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 580, height: 690), styleMask: [.titled,.closable], backing: .buffered, defer: false)
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 580, height: 690), styleMask: [.titled,.closable,.resizable], backing: .buffered, defer: false)
             window.title = "Настройки · Толк"; window.isReleasedWhenClosed = false; window.delegate = self
-            window.contentView = host(SettingsView(state: state) { [weak self] in self?.keys?.summary ?? "" }); window.center(); settingsWindow = window
+            let content = host(SettingsView(state: state) { [weak self] in self?.keys?.summary ?? "" })
+            content.sizingOptions = []
+            window.contentView = content; window.center(); settingsWindow = window
         }
+        if let settingsWindow { fitWorkspaceWindow(settingsWindow, minimum: WorkspaceGeometry.minimumSettings) }
         settingsWindow?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
     }
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions { [.banner,.list,.sound] }

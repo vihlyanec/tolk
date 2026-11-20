@@ -41,6 +41,7 @@ struct QuickCaptureView: View {
     let initialDuration: Int?
     let dismiss: () -> Void
     let heightChanged: (CGFloat) -> Void
+    let width: CGFloat
     @ViewState private var text: String
     @ViewState private var literals: [QuickLiteralToken]
     @ViewState private var description: String
@@ -50,8 +51,8 @@ struct QuickCaptureView: View {
     @ViewState private var titleFocus: UUID?
     @ViewState private var highlighted = 0
     @ViewState private var durationOverride: Int?
-    init(state: AppState, initialDate: Date? = nil, initialDuration: Int? = nil, heightChanged: @escaping (CGFloat) -> Void = { _ in }, dismiss: @escaping () -> Void) {
-        self.state = state; self.initialDate = initialDate; self.initialDuration = initialDuration; self.heightChanged = heightChanged; self.dismiss = dismiss
+    init(state: AppState, initialDate: Date? = nil, initialDuration: Int? = nil, width: CGFloat = 640, heightChanged: @escaping (CGFloat) -> Void = { _ in }, dismiss: @escaping () -> Void) {
+        self.state = state; self.initialDate = initialDate; self.initialDuration = initialDuration; self.heightChanged = heightChanged; self.dismiss = dismiss; self.width = width
         _text = State(initialValue: state.data.preferences.quickDraft)
         _description = State(initialValue: state.data.preferences.quickDraftBody ?? "")
         _descriptionExpanded = State(initialValue: state.data.preferences.quickDraftDescriptionExpanded == true || !(state.data.preferences.quickDraftBody ?? "").isEmpty)
@@ -111,7 +112,7 @@ struct QuickCaptureView: View {
                 Divider().padding(.horizontal, 18)
                 CaptureDescriptionView(text: $description, tags: state.data.tags, focusRequest: descriptionFocus, save: save)
             }
-        }.frame(width: 640, height: panelHeight).background(Palette.sidebar, in: RoundedRectangle(cornerRadius: 12))
+        }.frame(width: width, height: panelHeight).background(Palette.sidebar, in: RoundedRectangle(cornerRadius: 12))
             .overlay { RoundedRectangle(cornerRadius: 12).stroke(Palette.line, lineWidth: 1) }
             .preferredColorScheme(state.data.preferences.theme == "light" ? .light : state.data.preferences.theme == "dark" ? .dark : nil)
             .onAppear { heightChanged(panelHeight) }

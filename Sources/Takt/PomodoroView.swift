@@ -147,6 +147,7 @@ struct PomodoroWorkspace: View {
     private var focus: PomodoroController { state.pomodoro }
     var body: some View {
         GeometryReader { geometry in
+            let timerSize: CGFloat = geometry.size.height < 540 ? 188 : 250
             HStack(spacing: 0) {
                 ScrollView { VStack(spacing: 0) {
                     HStack { Text("Помодоро").font(.system(size: 24, weight: .bold)); Spacer()
@@ -164,8 +165,8 @@ struct PomodoroWorkspace: View {
                             Text(session.flatMap { state.item($0.taskID)?.title ?? $0.title } ?? "Выберите задачу для фокуса").font(.title3.weight(.medium)).multilineTextAlignment(.center).lineLimit(3)
                             ZStack {
                                 Circle().stroke(Palette.line, lineWidth: 4)
-                                Text(String(format: "%02d:%02d", seconds / 60, seconds % 60)).font(.system(size: 60, weight: .regular)).monospacedDigit()
-                            }.frame(width: 250, height: 250).accessibilityElement(children: .combine)
+                                Text(String(format: "%02d:%02d", seconds / 60, seconds % 60)).font(.system(size: timerSize * 0.24, weight: .regular)).monospacedDigit()
+                            }.frame(width: timerSize, height: timerSize).accessibilityElement(children: .combine)
                             if let session {
                                 HStack {
                                     if seconds == 0 { Button(session.phase == .focus ? "Начать перерыв" : "Начать фокус") { focus.next() }.buttonStyle(.borderedProminent) }

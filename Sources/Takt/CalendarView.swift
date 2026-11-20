@@ -4,24 +4,23 @@ import UniformTypeIdentifiers
 
 struct CalendarView: View {
     @Bindable var state: AppState
+    @ViewState private var compactQueueOpen = false
     var body: some View {
-        HSplitView {
-            VStack(spacing: 0) {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 8) { periodControls; Spacer(minLength: 8); viewControls }.frame(minWidth: 740, minHeight: 40)
-                    VStack(spacing: 4) {
-                        HStack(spacing: 8) { periodControls; Spacer(minLength: 0) }
-                        HStack(spacing: 8) { viewControls; Spacer(minLength: 0) }
+        GeometryReader { viewport in
+            if viewport.size.width >= 920 {
+                HSplitView {
+                    calendarPane(compact: false).frame(minWidth: 620)
+                    PlanningQueue(state: state).frame(minWidth: 280, idealWidth: 310, maxWidth: 330)
+                }
+            } else {
+                HStack(spacing: 0) {
+                    calendarPane(compact: true)
+                    if compactQueueOpen {
+                        Divider()
+                        PlanningQueue(state: state).frame(width: min(280, viewport.size.width * 0.46))
                     }
-                }.padding(.horizontal, 18).padding(.vertical, 12)
-
-                Divider()
-                if state.calendarMode == "Месяц" { MonthGrid(state: state) }
-                else { timeline }
-            }.frame(minWidth: 620, maxWidth: .infinity)
-                .background(CalendarSwipeSurface(advance: advance))
-                .background(CalendarClipboardSurface(state: state))
-            PlanningQueue(state: state).frame(minWidth: 280, idealWidth: 310, maxWidth: 330)
+                }
+            }
         }
         .onReceive(Timer.publish(every: 0.12, on: .main, in: .common).autoconnect()) { _ in
             if state.draggingID != nil && NSEvent.pressedMouseButtons == 0 { state.endDrag() }
@@ -41,9 +40,37 @@ struct CalendarView: View {
             }
         }
     }
+    private func calendarPane(compact: Bool) -> some View {
+        VStack(spacing: 0) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    periodControls.fixedSize(horizontal: true, vertical: false)
+                    Spacer(minLength: 8)
+                    viewControls
+                    if compact { queueButton }
+                }.frame(minWidth: 740, minHeight: 40)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        periodControls
+                        if compact { Spacer(minLength: 0); queueButton }
+                    }
+                    viewControls
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }.padding(.horizontal, compact ? 12 : 18).padding(.vertical, 12)
+            Divider()
+            if state.calendarMode == "Месяц" { MonthGrid(state: state) }
+            else { timeline }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(CalendarSwipeSurface(advance: advance))
+        .background(CalendarClipboardSurface(state: state))
+    }
+    private var queueButton: some View {
+        IconButton(symbol: "sidebar.right", help: compactQueueOpen ? "Скрыть очередь задач" : "Показать очередь задач") { compactQueueOpen.toggle() }
+    }
     private var periodControls: some View {
         HStack(spacing: 8) {
-            Text(monthTitle).font(.system(size: 21, weight: .semibold)).lineLimit(1).fixedSize(horizontal: true, vertical: false)
+            Text(monthTitle).font(.system(size: 21, weight: .semibold)).lineLimit(1)
             IconButton(symbol: "chevron.left", help: "Предыдущий период") { advance(-1) }
             IconButton(symbol: "chevron.right", help: "Следующий период") { advance(1) }
             Button("Сегодня") { state.anchor = Date() }.buttonStyle(.bordered)
@@ -51,12 +78,19 @@ struct CalendarView: View {
     }
     private var viewControls: some View {
         HStack(spacing: 8) {
-            Picker("Вид календаря", selection: $state.calendarMode) {
-                ForEach(["День", "Неделя", "Месяц"], id: \.self) { Text($0).tag($0) }
-            }.pickerStyle(.segmented).labelsHidden().frame(width: 190)
+            ViewThatFits(in: .horizontal) {
+                calendarModePicker.pickerStyle(.segmented).labelsHidden().frame(width: 190)
+                    .fixedSize(horizontal: true, vertical: false)
+                calendarModePicker.labelsHidden()
+            }
             IconButton(symbol: "minus.magnifyingglass", help: "Уменьшить масштаб времени") { state.change(undo: false) { $0.preferences.hourHeight = max(60, $0.preferences.hourHeight - 12) } }
             IconButton(symbol: "plus.magnifyingglass", help: "Увеличить масштаб времени") { state.change(undo: false) { $0.preferences.hourHeight = min(180, $0.preferences.hourHeight + 12) } }
             IconButton(symbol: "slider.horizontal.3", help: "Настройки календаря") { state.showSettings() }
+        }
+    }
+    private var calendarModePicker: some View {
+        Picker("Вид календаря", selection: $state.calendarMode) {
+            ForEach(["День", "Неделя", "Месяц"], id: \.self) { Text($0).tag($0) }
         }
     }
     private var monthTitle: String {
@@ -108,7 +142,7 @@ struct CalendarView: View {
                                             .contentShape(Rectangle())
                                             .onTapGesture { state.selectCalendar(item.id) }.onDrag { state.beginDrag(item) }
                                             .contextMenu { ItemContextMenu(state: state, item: item) }
-                                            .popover(isPresented: editorBinding(item.id)) { ItemInspector(state: state, id: item.id).frame(width: 340, height: 620) }
+                                            .popover(isPresented: editorBinding(item.id)) { CalendarTaskInspector(state: state, id: item.id) }
                                     }
                                     ForEach(state.externalEvents.filter { $0.allDay && $0.intersects(day: day, calendar: state.calendar) }) { event in
                                         ExternalEventCard(event: event, state: state).frame(height: 26)
@@ -361,7 +395,7 @@ struct CalendarEvent: View {
             .contentShape(Rectangle()).onTapGesture { state.selectCalendar(item.id) }
             .onDrag { state.beginDrag(item, offset: Int((pointerY / pixelsPerMinute / 15).rounded(.down)) * 15) }
             .popover(isPresented: Binding(get: { state.calendarEditingID == item.id }, set: { if !$0 { state.calendarEditingID = nil } })) {
-                ItemInspector(state: state, id: item.id).frame(width: 340, height: 620)
+                CalendarTaskInspector(state: state, id: item.id)
             }
             .overlay(alignment: .bottom) { resizeHandle(top: false) }
             .overlay(alignment: .top) { resizeHandle(top: true) }
@@ -490,9 +524,20 @@ struct PlanningQueue: View {
             .onKeyPress(.return) { state.selectedID = item.id; editingID = item.id; return .handled }
             .help(queueHelp(item))
             .popover(isPresented: Binding(get: { editingID == item.id }, set: { if !$0 { editingID = nil } })) {
-                ItemInspector(state: state, id: item.id).frame(width: 340, height: 620)
+                CalendarTaskInspector(state: state, id: item.id)
             }
             .contextMenu { ItemContextMenu(state: state, item: item) }
+    }
+}
+
+private struct CalendarTaskInspector: View {
+    let state: AppState
+    let id: UUID
+    @Environment(\.workspaceHeight) private var workspaceHeight
+
+    var body: some View {
+        ItemInspector(state: state, id: id)
+            .frame(width: 340, height: WorkspaceGeometry.presentationHeight(620, in: workspaceHeight))
     }
 }
 
@@ -506,40 +551,42 @@ struct MonthGrid: View {
     var body: some View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
-                HStack { ForEach(["Пн","Вт","Ср","Чт","Пт","Сб","Вс"], id: \.self) { Text($0).font(.system(size: 11)).foregroundStyle(.secondary).frame(maxWidth: .infinity) } }.frame(height: 28)
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: 0) {
-                    ForEach(dates, id: \.self) { day in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("\(state.calendar.component(.day, from: day))").font(.system(size: 12, weight: .medium)).foregroundStyle(state.calendar.isDateInToday(day) ? Palette.accent : .secondary)
-                            let items = state.calendarItems.filter { $0.schedule.date.map { state.calendar.isDate($0, inSameDayAs: day) } ?? false }
-                            ForEach(items.prefix(3)) { item in
-                                HStack(spacing: 1) { CompleteButton(item: item) { state.complete(item.id) }; Text(item.title).font(.system(size: 10)).strikethrough(item.completed).foregroundStyle(item.completed ? .secondary : .primary).lineLimit(1) }
-                                    .background(Color(hex: state.color(item)).opacity(item.completed ? 0.18 : 0.40), in: RoundedRectangle(cornerRadius: 3))
-                                    .onTapGesture { state.selectCalendar(item.id) }.onDrag { state.beginDrag(item) }
-                                    .contextMenu { ItemContextMenu(state: state, item: item) }
-                                    .popover(isPresented: Binding(get: { state.calendarEditingID == item.id }, set: { if !$0 { state.calendarEditingID = nil } })) {
-                                        ItemInspector(state: state, id: item.id).frame(width: 340, height: 620)
-                                    }
-                            }
-                            let external = state.externalEvents.filter { $0.intersects(day: day, calendar: state.calendar) }
-                            ForEach(external.prefix(max(0, 3 - min(3, items.count)))) { event in
-                                ExternalEventCard(event: event, state: state).frame(height: 22)
-                            }
-                            if items.count + external.count > 3 { Button("Ещё \(items.count + external.count - 3)") { state.anchor = day; state.calendarMode = "День" }.buttonStyle(.plain).font(.system(size: 10)) }
-                            Spacer(minLength: 0)
-                        }.padding(6).frame(maxWidth: .infinity, alignment: .leading).frame(height: max(80, (geometry.size.height - 28) / 6)).border(Palette.line, width: 0.5)
-                            .contentShape(Rectangle()).onTapGesture(count: 2) { state.showQuick(day) }
-                            .onHover { inside in state.calendarPasteTarget = inside ? .day(day) : nil }
-                            .contextMenu { CalendarPasteMenu(state: state, target: .day(day)) }
-                            .dropDestination(for: String.self) { strings, _ in
-                                guard let id = strings.first.flatMap(UUID.init(uuidString:)), state.item(id).map({ $0.kind == .task && !$0.deleted }) == true else { return false }
-                                state.update(id) { item in
-                                    if item.schedule.isTimed, let previous = item.schedule.date {
-                                        let p = state.calendar.dateComponents([.hour,.minute], from: previous)
-                                        item.schedule = .timed(state.calendar.date(bySettingHour: p.hour ?? 9, minute: p.minute ?? 0, second: 0, of: day) ?? day)
-                                    } else { item.schedule = .day(day) }
-                                }; state.endDrag(); return true
-                            }
+                HStack(spacing: 0) { ForEach(["Пн","Вт","Ср","Чт","Пт","Сб","Вс"], id: \.self) { Text($0).font(.system(size: 11)).foregroundStyle(.secondary).frame(maxWidth: .infinity) } }.frame(height: 28)
+                ScrollView(.vertical) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: 0) {
+                        ForEach(dates, id: \.self) { day in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("\(state.calendar.component(.day, from: day))").font(.system(size: 12, weight: .medium)).foregroundStyle(state.calendar.isDateInToday(day) ? Palette.accent : .secondary)
+                                let items = state.calendarItems.filter { $0.schedule.date.map { state.calendar.isDate($0, inSameDayAs: day) } ?? false }
+                                ForEach(items.prefix(3)) { item in
+                                    HStack(spacing: 1) { CompleteButton(item: item) { state.complete(item.id) }; Text(item.title).font(.system(size: 10)).strikethrough(item.completed).foregroundStyle(item.completed ? .secondary : .primary).lineLimit(1) }
+                                        .background(Color(hex: state.color(item)).opacity(item.completed ? 0.18 : 0.40), in: RoundedRectangle(cornerRadius: 3))
+                                        .onTapGesture { state.selectCalendar(item.id) }.onDrag { state.beginDrag(item) }
+                                        .contextMenu { ItemContextMenu(state: state, item: item) }
+                                        .popover(isPresented: Binding(get: { state.calendarEditingID == item.id }, set: { if !$0 { state.calendarEditingID = nil } })) {
+                                            CalendarTaskInspector(state: state, id: item.id)
+                                        }
+                                }
+                                let external = state.externalEvents.filter { $0.intersects(day: day, calendar: state.calendar) }
+                                ForEach(external.prefix(max(0, 3 - min(3, items.count)))) { event in
+                                    ExternalEventCard(event: event, state: state).frame(height: 22)
+                                }
+                                if items.count + external.count > 3 { Button("Ещё \(items.count + external.count - 3)") { state.anchor = day; state.calendarMode = "День" }.buttonStyle(.plain).font(.system(size: 10)) }
+                                Spacer(minLength: 0)
+                            }.padding(6).frame(maxWidth: .infinity, alignment: .leading).frame(height: max(112, (geometry.size.height - 28) / 6)).border(Palette.line, width: 0.5)
+                                .contentShape(Rectangle()).onTapGesture(count: 2) { state.showQuick(day) }
+                                .onHover { inside in state.calendarPasteTarget = inside ? .day(day) : nil }
+                                .contextMenu { CalendarPasteMenu(state: state, target: .day(day)) }
+                                .dropDestination(for: String.self) { strings, _ in
+                                    guard let id = strings.first.flatMap(UUID.init(uuidString:)), state.item(id).map({ $0.kind == .task && !$0.deleted }) == true else { return false }
+                                    state.update(id) { item in
+                                        if item.schedule.isTimed, let previous = item.schedule.date {
+                                            let p = state.calendar.dateComponents([.hour,.minute], from: previous)
+                                            item.schedule = .timed(state.calendar.date(bySettingHour: p.hour ?? 9, minute: p.minute ?? 0, second: 0, of: day) ?? day)
+                                        } else { item.schedule = .day(day) }
+                                    }; state.endDrag(); return true
+                                }
+                        }
                     }
                 }
             }

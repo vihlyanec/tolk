@@ -86,7 +86,7 @@ struct SettingsView: View {
                 Text("Личный менеджер задач · версия \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "локальная сборка")\nЗадачи и заметки хранятся локально.").font(.system(size: 12))
                 if let notice = state.notice { Text(notice).foregroundStyle(Palette.accent) }
             }
-        }.formStyle(.grouped).frame(width: 580, height: 690)
+        }.formStyle(.grouped).frame(maxWidth: .infinity, maxHeight: .infinity)
             .modifier(ProjectDeletionPrompt(state: state, inSettings: true))
             .preferredColorScheme(state.data.preferences.theme == "light" ? .light : state.data.preferences.theme == "dark" ? .dark : nil)
     }

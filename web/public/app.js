@@ -5,6 +5,7 @@ import {Client, api} from './sync.js?v=20261111';
 const client = new Client();
 const root = document.querySelector('#app');
 const editor = document.querySelector('#editor');
+const weeklyCalendar = matchMedia('(min-width:1100px)');
 let view = 'all', projectID = '', selectedDay = '', search = '', session = {}, noticeTimer;
 let showCompleted = false;
 let analyticsDays = 30, analyticsTag = '';
@@ -210,9 +211,12 @@ function render() {
   applyTagColors();
   document.querySelector('#add')?.addEventListener('click', () => view === 'projects' && !projectID ? editProject() : editTask());
 }
+weeklyCalendar.addEventListener('change', () => {
+  if (view === 'calendar' && document.querySelector('#content')) render();
+});
 function renderTasks(content, all) {
   if(view==='calendar') {
-    if(matchMedia('(min-width:1100px)').matches){renderCalendar(content,all);return;}
+    if(weeklyCalendar.matches){renderCalendar(content,all);return;}
     all=all.concat(calendarEvents());
   }
   const day = selectedDay || today();

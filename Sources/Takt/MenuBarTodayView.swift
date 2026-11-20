@@ -1,7 +1,7 @@
 import SwiftUI
 import TaktCore
 
-/// A fixed Today surface sharing the real AppState, without changing main-window filters.
+/// The menu bar Today list shares the main window’s AppState.
 struct MenuBarTodayView: View {
     @Bindable var state: AppState
     let openTask: (UUID) -> Void
@@ -61,7 +61,7 @@ struct MenuBarTodayView: View {
                     Spacer()
                     IconButton(symbol: "gearshape", help: "Настройки Толка", action: openSettings)
                 }.padding(.horizontal, 16).padding(.vertical, 8)
-            }.frame(width: 380, height: 560).background(Palette.sidebar)
+            }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Palette.sidebar)
         }
         .font(.system(size: 13)).tint(Palette.accent)
         .preferredColorScheme(state.data.preferences.theme == "dark" ? .dark : state.data.preferences.theme == "light" ? .light : nil)

@@ -10,6 +10,15 @@ struct NotesWorkspace: View {
     }
     private var selected: Item? { notes.first { $0.id == state.selectedID } }
     var body: some View {
+        GeometryReader { viewport in
+            notesPane(sidebarWidth: viewport.size.width < 800 ? 214 : 320)
+        }.onAppear { chooseFirst() }
+            .onChange(of: notes.map(\.id)) { _, _ in chooseFirst() }
+            .onChange(of: state.search) { _, _ in chooseFirst() }
+            .onChange(of: trash) { _, _ in chooseFirst() }
+            .onChange(of: state.scope) { _, _ in chooseFirst() }
+    }
+    private func notesPane(sidebarWidth: CGFloat) -> some View {
         HStack(spacing: 0) {
             if state.sidebarVisible {
                 VStack(spacing: 0) {
@@ -25,8 +34,8 @@ struct NotesWorkspace: View {
                             ForEach(state.data.tags) { tag in
                                 Button("#" + tag.name) { state.filterByTag(tag.id) }
                             }
-                        } label: { Label(state.scope == .all ? "Все заметки" : state.title, systemImage: "line.3.horizontal.decrease") }
-                            .menuStyle(.borderlessButton).fixedSize().help("Фильтр заметок по тегу")
+                        } label: { Label(state.scope == .all ? "Все заметки" : state.title, systemImage: "line.3.horizontal.decrease").lineLimit(1) }
+                            .menuStyle(.borderlessButton).help("Фильтр заметок по тегу")
                         Spacer()
                         if state.scope != .all { Button("Сбросить") { state.scope = .all }.buttonStyle(.plain).font(.system(size: 11)) }
                     }.padding(.horizontal, 14).padding(.bottom, 10)
@@ -47,16 +56,12 @@ struct NotesWorkspace: View {
                     }
                     Divider()
                     HStack { Text(noteCountLabel).font(.system(size: 11)).foregroundStyle(.secondary); Spacer(); Button { trash.toggle(); state.selectedID = nil } label: { Label(trash ? "Все заметки" : "Корзина", systemImage: trash ? "note.text" : "trash") }.buttonStyle(.plain) }.padding(12)
-                }.frame(width: 320).background(Palette.sidebar)
+                }.frame(width: sidebarWidth).background(Palette.sidebar)
                 Divider()
             }
             if let note = selected { NoteDocumentEditor(state: state, id: note.id).id(note.id) }
             else { EmptyState(symbol: "note.text", title: notes.isEmpty ? "Нет заметок" : "Выберите заметку", detail: "Создайте заметку кнопкой слева или через Control-D.") }
-        }.onAppear { chooseFirst() }
-            .onChange(of: notes.map(\.id)) { _, _ in chooseFirst() }
-            .onChange(of: state.search) { _, _ in chooseFirst() }
-            .onChange(of: trash) { _, _ in chooseFirst() }
-            .onChange(of: state.scope) { _, _ in chooseFirst() }
+        }
     }
     private var noteCountLabel: String {
         let count = notes.count

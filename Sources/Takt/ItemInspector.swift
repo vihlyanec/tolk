@@ -296,6 +296,7 @@ struct MarkdownEditor: NSViewRepresentable {
 struct CreationSheet: View {
     @Bindable var state: AppState
     let kind: CreationKind
+    var maximumHeight: CGFloat? = nil
     @Environment(\.dismiss) private var dismiss
     @ViewState private var name = ""
     @ViewState private var loaded = false
@@ -309,6 +310,15 @@ struct CreationSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text(title).font(.system(size: 20, weight: .semibold))
+            ViewThatFits(in: .vertical) {
+                fields.fixedSize(horizontal: false, vertical: true)
+                ScrollView { fields.padding(1) }
+            }
+            HStack { Button("Отмена") { dismiss() }.keyboardShortcut(.cancelAction); Spacer(); Button("Сохранить", action: save).keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
+        }.padding(26).frame(width: 390).frame(maxHeight: maximumHeight).onAppear(perform: load)
+    }
+    private var fields: some View {
+        VStack(alignment: .leading, spacing: 20) {
             TextField("Название", text: $name).onSubmit(save).onChange(of: name) { _, _ in sectionError = nil }
             if let sectionError { Text(sectionError).font(.system(size: 12)).foregroundStyle(.red) }
             switch kind {
@@ -360,8 +370,7 @@ struct CreationSheet: View {
                 }
 
             }
-            HStack { Button("Отмена") { dismiss() }.keyboardShortcut(.cancelAction); Spacer(); Button("Сохранить", action: save).keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
-        }.padding(26).frame(width: 390).onAppear(perform: load)
+        }
     }
     private var title: String { switch kind { case .project(let id): id == nil ? "Новый проект" : "Изменить проект"; case .tag(let id): id == nil ? "Новый тег" : "Изменить тег"; case .section(let id): state.data.projects.first(where: { $0.id == id })?.kanban == true ? "Новый этап" : "Новый раздел" } }
     private func load() {

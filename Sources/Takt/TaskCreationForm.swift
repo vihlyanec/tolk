@@ -30,6 +30,7 @@ struct TaskCreationDraft {
 struct TaskCreationForm: View {
     @Bindable var state: AppState
     let dismiss: () -> Void
+    let width: CGFloat
     let height: CGFloat
     @ViewState private var draft: TaskCreationDraft
     @ViewState private var newCheck = ""
@@ -40,8 +41,8 @@ struct TaskCreationForm: View {
     @ViewState private var saved = false
     @Environment(\.colorScheme) private var colorScheme
 
-    init(state: AppState, draft: TaskCreationDraft = TaskCreationDraft(), height: CGFloat? = nil, dismiss: @escaping () -> Void) {
-        self.state = state; self.dismiss = dismiss; _draft = State(initialValue: draft)
+    init(state: AppState, draft: TaskCreationDraft = TaskCreationDraft(), width: CGFloat = 600, height: CGFloat? = nil, dismiss: @escaping () -> Void) {
+        self.state = state; self.width = width; self.dismiss = dismiss; _draft = State(initialValue: draft)
         self.height = height ?? min(680, max(360, (NSScreen.main?.visibleFrame.height ?? 780) - 100))
     }
     private var parsed: ParsedTask {
@@ -139,7 +140,7 @@ struct TaskCreationForm: View {
                         .disabled(parsed.title.isEmpty || saved)
                 }
             }.padding(18)
-        }.frame(width: 600, height: height).font(.system(size: 13)).background(Palette.sidebar)
+        }.frame(width: width, height: height).font(.system(size: 13)).background(Palette.sidebar)
             .preferredColorScheme(state.data.preferences.theme == "light" ? .light : state.data.preferences.theme == "dark" ? .dark : nil)
     }
     private func row<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
