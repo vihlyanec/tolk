@@ -21,6 +21,13 @@ nonisolated enum MarkdownHTML {
         guard url.scheme == "tolk-copy", url.host == "inline" else { return nil }
         return URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "text" })?.value
     }
+    static func telegramFallback(for url: URL) -> URL? {
+        guard url.scheme == "tg", url.host == "resolve",
+              let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
+              query.count == 1, query[0].name == "domain", let name = query[0].value,
+              name.range(of: #"^[a-zA-Z0-9_]{1,32}$"#, options: .regularExpression) != nil else { return nil }
+        return URL(string: "https://t.me/\(name)")
+    }
     static func inline(_ source: String, taskLinks: Bool = false, links: Bool = true) -> String {
         let pattern = #"`([^`]+)`|!?\[([^\]]+)\]\(([^\s)]+)\)|https?://[^\s<>]+|\*\*(.+?)\*\*|__(.+?)__|~~(.+?)~~|\*([^*]+)\*|_([^_]+)_"#
             + (taskLinks && links ? #"|(?<![\p{L}\p{N}_.@/])@([a-zA-Z0-9_]{1,32})(?![\p{L}\p{N}_])"# : "")
@@ -46,7 +53,7 @@ nonisolated enum MarkdownHTML {
             } else if let bold = value(4) ?? value(5) { html += "<strong>\(inline(bold, taskLinks: taskLinks, links: links))</strong>" }
             else if let strike = value(6) { html += "<del>\(inline(strike, taskLinks: taskLinks, links: links))</del>" }
             else if let italic = value(7) ?? value(8) { html += "<em>\(inline(italic, taskLinks: taskLinks, links: links))</em>" }
-            else if taskLinks && links, let username = value(9) { html += "<a href=\"https://t.me/\(username)\">@\(username)</a>" }
+            else if taskLinks && links, let username = value(9) { html += "<a href=\"tg://resolve?domain=\(username)\">@\(username)</a>" }
             else { html += escape(raw) }
             end = NSMaxRange(match.range)
         }
@@ -138,6 +145,9 @@ struct MarkdownPreview: NSViewRepresentable {
                     if taskLinks, let text = MarkdownHTML.copyText(from: url) {
                         NSPasteboard.general.clearContents()
                         if NSPasteboard.general.setString(text, forType: .string) { onCopy() }
+                    } else if taskLinks, let fallback = MarkdownHTML.telegramFallback(for: url) {
+                        let workspace = NSWorkspace.shared
+                        if workspace.urlForApplication(toOpen: url) == nil || !workspace.open(url) { workspace.open(fallback) }
                     } else if MarkdownHTML.safeURL(url.absoluteString) != nil { NSWorkspace.shared.open(url) }
                 }
                 decisionHandler(.cancel)
