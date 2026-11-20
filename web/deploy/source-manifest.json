@@ -36,5 +36,155 @@
     "Dockerfile": "e18ed6a7e5a397af9a03bba861124bf44ad3db9580e9f438f01569a2e8184199",
     "compose.yaml": "dab18e31018528dff2777cec5132a7bffe9d4d262f8d1efad8db199d6ac08d06",
     ".dockerignore": "6d474fa6b34270912c6835a2447de7063017ffd9df95b941b864449e2c2a1e01"
+  },
+  "sync_repair_commit": "9a7340bd538408f0f874a1fc3fcfb735564dfa10",
+  "source_backup": "/opt/tolk-web-before-115-20261111.tgz",
+  "database_backup": "20261111T194512053649Z.sqlite",
+  "deployment_receipt": "/opt/tolk-web-deploy-115-receipt.json",
+  "capture_repair": {
+    "date": "2026-11-11",
+    "verification": "42Python tests passed; auth-first401verified production; public shortcut HTTPS SHA256 match; real macOS Shortcuts synthetic success/error branches tested; physicaliPhonepending",
+    "database_backup": "20261111T201718270164Z.sqlite",
+    "source_backup": "/opt/tolk-capture-auth-before-20261111-v2"
+  },
+  "capture_key_display": {
+    "date": "2026-11-11",
+    "database_backup": "20261111T204241485592Z.sqlite",
+    "source_backup": "/opt/tolk-key-display-before-20261111",
+    "receipt": "/opt/tolk-key-display-20261111-receipt.json",
+    "verification": "44Python+25JS pass; synthetic browser lost-response retry2requests/1key; background rerender during issuance preserves dialog/key; desktop1280dark/mobile390light; physicaliPhone not tested",
+    "app_version": "20261111-key-display",
+    "service_worker": "v9"
+  },
+  "project_section_paths": {
+    "source_commit": "235bd123e5d1153b346979535959c9248cbbc4e9",
+    "receipt": "/opt/tolk-project-path-118-20261117T142639857639Z-receipt.json",
+    "database_backup": {
+      "path": "/opt/tolk-web/data/backups/20261117T142639857639Z-before-project-path-118.sqlite",
+      "bytes": 9342976,
+      "quick_check": "ok"
+    },
+    "source_backup": "/opt/tolk-project-path-before-118-20261117T142639857639Z",
+    "installed_sha256": {
+      "public/smart.js": "e6372fd7d8d1f9309e28c7644877bf7fa973480757124643fccc7118e1525ea1",
+      "public/app.js": "0196dfae41caeab3a36ecfbbd247899ecfe56e9611ff7600c91a3fac3d555237",
+      "public/sw.js": "1d9d108890166196d440931ac2cc753ec9155d4a560920783f9f6d1541c76d50",
+      "public/index.html": "c67f6fbfd844654aa752f3a2072f130c1cac42d0141444b499744aca5354ff29"
+    },
+    "served_sha256": {
+      "public/smart.js": "e6372fd7d8d1f9309e28c7644877bf7fa973480757124643fccc7118e1525ea1",
+      "public/app.js": "0196dfae41caeab3a36ecfbbd247899ecfe56e9611ff7600c91a3fac3d555237",
+      "public/sw.js": "1d9d108890166196d440931ac2cc753ec9155d4a560920783f9f6d1541c76d50",
+      "public/index.html": "c67f6fbfd844654aa752f3a2072f130c1cac42d0141444b499744aca5354ff29"
+    },
+    "https": {
+      "source_commit": "235bd123e5d1153b346979535959c9248cbbc4e9",
+      "public": {
+        "smart.js": {
+          "sha256": "e6372fd7d8d1f9309e28c7644877bf7fa973480757124643fccc7118e1525ea1",
+          "bytes": 6522,
+          "status": 200
+        },
+        "app.js": {
+          "sha256": "0196dfae41caeab3a36ecfbbd247899ecfe56e9611ff7600c91a3fac3d555237",
+          "bytes": 84564,
+          "status": 200
+        },
+        "index.html": {
+          "sha256": "c67f6fbfd844654aa752f3a2072f130c1cac42d0141444b499744aca5354ff29",
+          "bytes": 1841,
+          "status": 200
+        },
+        "sw.js": {
+          "sha256": "1d9d108890166196d440931ac2cc753ec9155d4a560920783f9f6d1541c76d50",
+          "bytes": 2136,
+          "status": 200
+        },
+        "app.js?v=20261117-project-path": {
+          "sha256": "0196dfae41caeab3a36ecfbbd247899ecfe56e9611ff7600c91a3fac3d555237",
+          "bytes": 84564,
+          "status": 200
+        },
+        "smart.js?v=20261117-project-path": {
+          "sha256": "e6372fd7d8d1f9309e28c7644877bf7fa973480757124643fccc7118e1525ea1",
+          "bytes": 6522,
+          "status": 200
+        }
+      },
+      "session": 200,
+      "/api/capture": 401,
+      "/api/capture/options": 401,
+      "/api/capture cross-origin": 403
+    },
+    "restarts": [],
+    "personal_record_writes": false,
+    "database_migrations": false,
+    "credentials_read": false
+  },
+  "native_release_verification": {
+    "version": "1.1.10",
+    "build": 48,
+    "commit": "09fe36e406931f42d6a63c7fc0840e74c872dbc3",
+    "release_url": "https://github.com/vihlyanec/tolk/releases/tag/v1.1.10",
+    "ci_url": "https://github.com/vihlyanec/tolk/actions/runs/44691273319",
+    "public_downloads": {
+      "Tolk-1.1.10.md": {
+        "sha256": "ffc948b3827437a9183852ac10a74ad29d1fe8281bda18078a2ad50ddce56ef9",
+        "bytes": 1893
+      },
+      "Tolk-1.1.10.zip": {
+        "sha256": "34e147b5f8a65508a5a6d71afd88d0e4971d793a09b675a65bd5341e29f931c1",
+        "bytes": 9062530
+      },
+      "appcast.xml": {
+        "sha256": "cf276fe6c1f2bc94eb4ea754aaef6ba43a03611472858f07bebc2f90d6727b08",
+        "bytes": 1456
+      },
+      "checksums.txt": {
+        "sha256": "3db6950b37932102b5039e285042dc12ee0270414209262f560b2bd4b3dfe859",
+        "bytes": 241
+      },
+      "latest-appcast.xml": {
+        "sha256": "cf276fe6c1f2bc94eb4ea754aaef6ba43a03611472858f07bebc2f90d6727b08",
+        "bytes": 1456
+      }
+    }
+  },
+  "calendar_background_119": {
+    "status": "pending_ssh_session",
+    "source_commit": "d67f18a621003c4666a2f63f348621e122a008a5",
+    "baseline_verified_over_https": true
+  },
+  "native_release_verification_119": {
+    "url": "https://github.com/vihlyanec/tolk/releases/tag/v1.1.8",
+    "release_id": 448743867,
+    "published_at": "2026-11-17T14:58:28Z",
+    "source_commit": "e01695cd61bd2a91fd7e07e210e9d899860af54b",
+    "ci_run": 44106021664,
+    "public_asset_sha256": {
+      "Tolk-1.1.8.md": "d73240ce19cfa4c27aa5857246b7d252aae4898a924d3e36afceb201a8449ae4",
+      "Tolk-1.1.8.zip": "c066e992adf33835ba26610f95e0895eb5833a4a034e5b097a01e84c804d99d2",
+      "appcast.xml": "2264333d33a31563e12c670e03f7185646469762c2af363d2ba2ec2f776f5729",
+      "checksums.txt": "a2707623cd284ebd88cf907a88c4780dcf4fa3cfc5c62d77c6220c1095d72353"
+    },
+    "latest_appcast_matches": true
+  },
+  "task_workflow_1110": {
+    "production_web_state": "awaiting owner SSH session",
+    "release_source": {
+      "source": "09fe36e406931f42d6a63c7fc0840e74c872dbc3",
+      "sha256": {
+        "public/app.js": "eadf03cc70fa6c033c5f7bbc20a47c895c19e41e66926faa894511cfa85aa0e8",
+        "public/index.html": "2b00ad6059548555e4da620d5acd2f60c794ed242d18d02ca048850869a0d785",
+        "public/model.js": "ba141f180904a668953878d47bc50f9b67561d0e8ee4a6e1f339e537f4028965",
+        "public/style.css": "960d296275842063cbe4769c83332ecae0b6b2f792f95003c790a6492bf1683b",
+        "public/sw.js": "96cb70cea4c303859a69f282dfba27a4ac100a4ac694b1eae20e092935c02a90",
+        "server/push.py": "9b178c8b9d9e79d163a52ad431d6e892e97262e81b446f5ce138c9d1c2c7848b",
+        "server/schema.py": "0ce1ba60788550ae8a03cb2c0bfd0c6c216699116219642ad431b8ea68ceae4d",
+        "server/store.py": "11ad4eea68cf118674267c4c04300d36f4b767740b67f236f5c57cfec6c22092",
+        "server/task_activity.py": "a62211b888ce2aab45819f4e54845811123e268642df40516b82d90947361bdc"
+      }
+    },
+    "compatibility": "Mac negotiates support before sending the new fields."
   }
 }
