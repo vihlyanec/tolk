@@ -20,7 +20,7 @@ import TaktCore
     #expect(moved.tagIDs == task.tagIDs && moved.priority == task.priority && moved.checklist == task.checklist)
     #expect(!state.visibleItems.contains { $0.id == task.id })
     #expect(state.taskCount(in: .project(project.id)) == count + 1)
-    state.undo(); #expect(state.data == before)
+    state.undo(); #expect(state.data.withoutTaskActivity == before.withoutTaskActivity)
 }
 @Test @MainActor func todayTaskRemainsInTodayAfterProjectDropAndSameProjectKeepsSection() throws {
     let state = AppState(demo: true)

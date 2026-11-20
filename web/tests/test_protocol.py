@@ -57,6 +57,50 @@ class ProtocolTests(unittest.TestCase):
         fetched = self.send(cursor=first['cursor'])
         self.assertTrue(fetched['changes'][0]['data']['completed'])
 
+    def test_task_outcomes_activity_and_per_project_automation(self):
+        project, task, other = uid(), uid(), uid()
+        rule = {'title': 'Работа', 'sections': ['В работе', 'Готово', 'Проверить'],
+                'moveOnCompletion': 'Готово', 'moveOnReopen': 'Проверить'}
+        initial = self.send(
+            operation(project, patch=rule, kind='project'),
+            operation(task, patch={'title': 'Смета', 'projectID': project, 'section': 'В работе',
+                                   'recurrence': 'daily', 'date': '2026-11-20'}),
+            operation(other, patch={'title': 'Личное'}))
+        self.assertTrue(initial['taskWorkflow'])
+        completion = operation(task, 1, {'completed': True})
+        result = self.send(completion, operation(other, 1, {'completed': True}), cursor=initial['cursor'])
+        done, personal = [entry['record']['data'] for entry in result['results']]
+        self.assertEqual(done['section'], 'Готово')
+        self.assertIsInstance(done['completedAt'], float)
+        self.assertEqual(done['taskActivity'][0]['changes'], ['completed', 'section'])
+        self.assertNotIn('section', personal)
+        child = next(record['data'] for record in result['changes'] if record['data'].get('repeatParentID') == task)
+        self.assertEqual(child['section'], 'В работе')
+        self.assertNotIn('taskActivity', child)
+        self.assertNotIn('completedAt', child)
+        self.assertEqual(self.send(completion)['results'][0]['record']['data'], done)
+        reopened = self.send(operation(task, 2, {'completed': False}))['results'][0]['record']['data']
+        self.assertEqual(reopened['section'], 'Проверить')
+        self.assertIsNone(reopened['completedAt'])
+        skipped = self.send(operation(task, 3, {'wontDoAt': 816826000}))['results'][0]['record']['data']
+        self.assertEqual(skipped['wontDoAt'], 816826000)
+        self.assertFalse(skipped['completed'])
+        self.assertEqual(skipped['taskActivity'][-1]['changes'], ['wontDo'])
+        self.assertFalse(self.send(operation(task, 3, {'completed': True}))['results'][0]['accepted'])
+        active = self.send(operation(task, 4, {'wontDoAt': None}))['results'][0]['record']['data']
+        self.assertIsNone(active['wontDoAt'])
+        self.assertEqual(active['taskActivity'][-1]['changes'], ['reopened'])
+
+    def test_concurrent_native_activity_merges_without_discarding_events(self):
+        task = uid()
+        self.send(operation(task, patch={'title': 'Смета'}))
+        first = {'id': uid(), 'date': 816826000, 'changes': ['priority']}
+        second = {'id': uid(), 'date': 816826010, 'changes': ['body']}
+        for patch in ({'priority': 1, 'taskActivity': [first]}, {'body': 'Цены', 'taskActivity': [second]}):
+            response = self.store.sync(self.account, [operation(task, 1, patch)], 0, native=True)
+            self.assertTrue(response['results'][0]['accepted'])
+        self.assertEqual(response['results'][0]['record']['data']['taskActivity'], [first, second])
+
     def test_retry_is_idempotent_and_survives_restart(self):
         op = operation()
         first = self.send(op)
@@ -77,7 +121,9 @@ class ProtocolTests(unittest.TestCase):
         self.send(operation(op['entityID'], 1, {'title': 'Новый заголовок'}))
         result = self.send(operation(op['entityID'], 1, {'completed': True}))['results'][0]
         self.assertTrue(result['accepted'])
-        self.assertEqual({k:v for k,v in result['record']['data'].items() if k!='modified'}, {'title': 'Новый заголовок', 'completed': True})
+        data = result['record']['data']
+        self.assertEqual((data['title'], data['completed']), ('Новый заголовок', True))
+        self.assertEqual([event['changes'] for event in data['taskActivity']], [['title'], ['completed']])
         self.assertIsInstance(result['record']['data']['modified'], float)
 
     def test_same_field_conflict_preserves_remote_and_allows_resolution(self):

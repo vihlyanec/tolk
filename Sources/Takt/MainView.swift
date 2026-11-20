@@ -22,6 +22,7 @@ struct MainView: View {
                 if state.sidebarVisible && state.area == .tasks { Sidebar(state: state).frame(width: 252); Divider() }
                 Group {
                     if state.area == .focus { PomodoroWorkspace(state: state) }
+                    else if state.area == .analytics { TaskAnalyticsView(state: state) }
                     else if state.area == .calendar { CalendarView(state: state) }
                     else if state.area == .notes { NotesWorkspace(state: state) }
                     else { TaskListView(state: state) }
@@ -53,14 +54,19 @@ struct MainView: View {
         VStack(spacing: 16) {
             BrandMark().frame(width: 36, height: 36).padding(.top, 12).padding(.bottom, 10)
             ForEach(Area.allCases, id: \.self) { area in
-                let symbol = area == .tasks ? "checklist" : area == .calendar ? "calendar" : area == .focus ? "timer" : "square.and.pencil"
-                let title = area == .tasks ? "Задачи" : area == .calendar ? "Календарь" : area == .focus ? "Помодоро" : "Заметки"
+                let (symbol, title) = switch area {
+                case .tasks: ("checklist", "Задачи")
+                case .calendar: ("calendar", "Календарь")
+                case .focus: ("timer", "Помодоро")
+                case .notes: ("square.and.pencil", "Заметки")
+                case .analytics: ("chart.bar.xaxis", "Аналитика")
+                }
                 IconButton(symbol: symbol, help: title, tint: state.area == area ? Palette.accent : .secondary) {
                     state.area = area; state.scope = .all; state.selectedID = nil
                 }.frame(width: 38, height: 38).background(state.area == area ? Palette.accent.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 8))
             }
             Spacer()
-            if state.area != .calendar && state.area != .focus { IconButton(symbol: "sidebar.left", help: state.area == .notes ? "Показать/скрыть заметки" : "Показать/скрыть проекты") { state.sidebarVisible.toggle() } }
+            if state.area == .tasks || state.area == .notes { IconButton(symbol: "sidebar.left", help: state.area == .notes ? "Показать/скрыть заметки" : "Показать/скрыть проекты") { state.sidebarVisible.toggle() } }
             IconButton(symbol: "gearshape", help: "Настройки") { state.showSettings() }.padding(.bottom, 16)
         }.frame(width: 52).background(Color.primary.opacity(0.025)).overlay(alignment: .trailing) { Rectangle().fill(Palette.line).frame(width: 1) }
     }
@@ -68,6 +74,8 @@ struct MainView: View {
 
 struct Sidebar: View {
     @Bindable var state: AppState
+    @AppStorage("sidebarProjectsExpanded") private var projectsExpanded = true
+    @AppStorage("sidebarTagsExpanded") private var tagsExpanded = true
     @ViewState private var projectDropTarget: UUID?
     @ViewState private var projectDropAfter = false
     var body: some View {
@@ -82,7 +90,8 @@ struct Sidebar: View {
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 4) {
-                    sectionHeading("Проекты") { state.sheet = .project(nil) }.padding(.top, 22)
+                    sectionHeading("Проекты", expanded: $projectsExpanded) { state.sheet = .project(nil) }.padding(.top, 22)
+                    if projectsExpanded {
                     ForEach(Array(Set(state.activeProjects.map(\.folder))).sorted(), id: \.self) { folder in
                         if !folder.isEmpty { HStack { Text(folder); Spacer(); countBadge(state.folderTaskCount(folder)) }.font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary).padding(.top, 10).padding(.horizontal, 8) }
                         ForEach(state.activeProjects.filter { $0.folder == folder }) { project in
@@ -112,13 +121,17 @@ struct Sidebar: View {
                                 }
                         }
                     }
-                    sectionHeading("Теги") { state.sheet = .tag(nil) }.padding(.top, 22)
-                    tagTree(parent: nil, level: 0)
-                    if state.data.tags.isEmpty { Text("Создайте первый тег через +").font(.system(size: 11)).foregroundStyle(.secondary).padding(8) }
+                    }
+                    sectionHeading("Теги", expanded: $tagsExpanded) { state.sheet = .tag(nil) }.padding(.top, 22)
+                    if tagsExpanded {
+                        tagTree(parent: nil, level: 0)
+                        if state.data.tags.isEmpty { Text("Создайте первый тег через +").font(.system(size: 11)).foregroundStyle(.secondary).padding(8) }
+                    }
                 }
             }
             Divider().padding(.vertical, 8)
             nav("Завершённые", symbol: "checkmark.circle", scope: .completed)
+            nav("Не буду выполнять", symbol: "minus.circle", scope: .wontDo)
             nav("Корзина", symbol: "trash", scope: .trash)
             Text(state.isDemo ? "Демо · вымышленные данные" : "Толк · локально на Mac").font(.system(size: 10)).foregroundStyle(.secondary).padding(.top, 10).padding(.leading, 8)
         }.padding(12).background(Palette.sidebar)
@@ -142,8 +155,18 @@ struct Sidebar: View {
         }.buttonStyle(.plain).foregroundStyle(state.scope == scope ? Palette.accent : .primary)
             .background(state.scope == scope ? Palette.accent.opacity(0.13) : .clear, in: RoundedRectangle(cornerRadius: 5))
     }
-    private func sectionHeading(_ name: String, action: @escaping () -> Void) -> some View {
-        HStack { Text(name).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary); Spacer(); IconButton(symbol: "plus", help: "Добавить: \(name)", action: action) }.padding(.leading, 8)
+    private func sectionHeading(_ name: String, expanded: Binding<Bool>, action: @escaping () -> Void) -> some View {
+        HStack(spacing: 0) {
+            Button { expanded.wrappedValue.toggle() } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: expanded.wrappedValue ? "chevron.down" : "chevron.right").font(.system(size: 9, weight: .semibold)).frame(width: 10)
+                    Text(name).font(.system(size: 12, weight: .semibold))
+                    Spacer()
+                }.frame(height: 30).contentShape(Rectangle())
+            }.buttonStyle(.plain).foregroundStyle(.secondary)
+                .accessibilityValue(expanded.wrappedValue ? "Развёрнуто" : "Свёрнуто")
+            IconButton(symbol: "plus", help: "Добавить: \(name)") { expanded.wrappedValue = true; action() }
+        }.padding(.leading, 8)
     }
     private func tagTree(parent: UUID?, level: Int) -> AnyView {
         AnyView(ForEach(state.data.tags.filter { $0.parentID == parent }) { tag in
@@ -169,6 +192,7 @@ struct TaskListView: View {
                     Text(state.title).font(.system(size: 23, weight: .semibold)).lineLimit(1)
                     Spacer()
                     if let project = state.project {
+                        IconButton(symbol: "gearshape", help: "Настройки проекта и автоматизации") { state.sheet = .project(project.id) }
                         Picker("Вид", selection: Binding(get: { project.kanban }, set: { value in state.change { s in if let i = s.projects.firstIndex(where: { $0.id == project.id }) { s.projects[i].kanban = value } } })) {
                             Text("Список").tag(false); Text("Канбан").tag(true)
                         }.pickerStyle(.segmented).labelsHidden().frame(width: 160)
@@ -199,11 +223,11 @@ struct TaskListView: View {
                     }
                     Text("\(state.visibleItems.count)").foregroundStyle(.secondary)
                 }.padding(.horizontal, 22).padding(.bottom, 14)
-                if state.area != .notes && state.scope != .trash && state.scope != .completed { InlineQuickEntry(state: state) }
+                if state.area != .notes && state.scope != .trash && state.scope != .completed && state.scope != .wontDo { InlineQuickEntry(state: state) }
                 Divider()
                 if state.project?.kanban == true { kanban }
                 else if state.visibleItems.isEmpty {
-                    EmptyState(symbol: state.area == .notes ? "note.text" : "checkmark.circle", title: "Пока пусто", detail: state.search.isEmpty ? "Добавьте первую запись. Проекты и теги можно создать слева." : "По этому запросу ничего не найдено.")
+                    EmptyState(symbol: state.area == .notes ? "note.text" : "checkmark.circle", title: "Пока пусто", detail: state.scope == .wontDo ? "Здесь остаются задачи, которые вы решили не выполнять." : state.search.isEmpty ? "Добавьте первую запись. Проекты и теги можно создать слева." : "По этому запросу ничего не найдено.")
                 } else {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 0) {
@@ -264,7 +288,8 @@ struct TaskRow: View {
     }
     var body: some View {
         HStack(alignment: .top, spacing: 9) {
-            if item.kind == .task { CompleteButton(item: item) { state.complete(item.id) } }
+            if item.wontDoAt != nil { IconButton(symbol: "arrow.uturn.backward", help: "Вернуть в работу") { state.toggleWontDo(item.id) }.disabled(item.deleted) }
+            else if item.kind == .task { CompleteButton(item: item) { state.complete(item.id) } }
             else { Image(systemName: "note.text").foregroundStyle(.secondary).frame(width: 23) }
             VStack(alignment: .leading, spacing: 5) {
                 Text(item.title.isEmpty ? "Без названия" : item.title).strikethrough(item.completed).lineLimit(2)
@@ -308,10 +333,19 @@ struct ItemContextMenu: View {
     var body: some View {
         if item.deleted { Button("Восстановить") { state.update(item.id) { $0.deleted = false } } }
         else {
-            if item.kind == .task && !item.completed { Button("Начать фокус") { state.startFocus(item) } }
+            if item.isActiveTask { Button("Начать фокус") { state.startFocus(item) } }
+            if item.kind == .task && !item.completed {
+                Button(item.wontDoAt == nil ? "Не буду выполнять" : "Вернуть в работу") { state.toggleWontDo(item.id) }
+            }
             Button("Открыть стикер") { state.showSticky(item.id) }
             if item.kind == .task { Button("Копировать событие") { state.copyCalendarItem(item) } }
-            Button("Дублировать") { var copy = item; copy.id = UUID(); copy.recurrenceSourceID = nil; copy.recurrenceOriginalDate = nil; copy.recurrenceEndDate = nil; copy.repeatParentID = nil; copy.completed = false; copy.stickyOpen = false; copy.title += " — копия"; state.add(copy) }
+            Button("Дублировать") {
+                var copy = item
+                copy.id = UUID(); copy.created = Date(); copy.modified = copy.created
+                copy.recurrenceSourceID = nil; copy.recurrenceOriginalDate = nil; copy.recurrenceEndDate = nil; copy.repeatParentID = nil
+                copy.completed = false; copy.completedAt = nil; copy.wontDoAt = nil; copy.taskActivity = nil; copy.sectionBeforeCompletion = nil
+                copy.stickyOpen = false; copy.title += " — копия"; state.add(copy)
+            }
             if item.kind == .task {
                 Button("Снять время, сохранить дату") { state.unschedule(item.id) }
                 Button("Убрать дату и время") { state.unschedule(item.id, clearDay: true) }

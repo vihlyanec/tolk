@@ -9,6 +9,8 @@ struct ItemInspector: View {
     @ViewState private var format: EditorAction?
     @ViewState private var remindersOpen = false
     @ViewState private var dateOpen = false
+    @ViewState private var activityOpen = false
+    @ViewState private var copiedAt: Date?
     @Environment(\.colorScheme) private var colorScheme
     private var item: Item? { state.item(id) }
     private func binding<T>(_ path: WritableKeyPath<Item, T>, fallback: T) -> Binding<T> {
@@ -18,12 +20,25 @@ struct ItemInspector: View {
         if let item {
             VStack(spacing: 0) {
                 HStack {
-                    if item.kind == .task { CompleteButton(item: item) { state.complete(id) } }
+                    if item.wontDoAt != nil {
+                        IconButton(symbol: "arrow.uturn.backward", help: "Вернуть в работу") { state.toggleWontDo(id) }.disabled(item.deleted)
+                    } else if item.kind == .task { CompleteButton(item: item) { state.complete(id) } }
                     else { Image(systemName: "note.text").foregroundStyle(.secondary) }
-                    Text(item.kind == .note ? "Заметка" : "Задача").foregroundStyle(.secondary)
+                    Text(item.kind == .note ? "Заметка" : item.wontDoAt == nil ? "Задача" : "Не буду выполнять").foregroundStyle(.secondary)
                     Spacer()
-                    if item.kind == .task && !item.completed && !item.deleted {
+                    if item.isActiveTask {
                         Button { state.startFocus(item) } label: { Label("Фокус", systemImage: "timer") }.help("Начать Помодоро по задаче")
+                    }
+                    if item.kind == .task {
+                        Menu {
+                            Button("Активность", systemImage: "clock.arrow.circlepath") { activityOpen = true }
+                            if !item.completed && !item.deleted {
+                                Button(item.wontDoAt == nil ? "Не буду выполнять" : "Вернуть в работу", systemImage: item.wontDoAt == nil ? "minus.circle" : "arrow.uturn.backward") { state.toggleWontDo(id) }
+                            }
+                        } label: { Image(systemName: "ellipsis.circle") }
+                            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                            .accessibilityLabel("Действия с задачей").help("Действия с задачей")
+                            .popover(isPresented: $activityOpen) { TaskActivityView(item: item, calendar: state.calendar) }
                     }
                     IconButton(symbol: "pin", help: "Открыть стикер") { state.showSticky(id) }.disabled(item.deleted)
                     IconButton(symbol: "xmark", help: "Закрыть детали") { state.selectedID = nil; state.calendarEditingID = nil }
@@ -55,6 +70,7 @@ struct ItemInspector: View {
                         HStack {
                             Text(item.kind == .note ? "Текст заметки" : "Описание").fontWeight(.medium)
                             Spacer()
+                            if copiedAt != nil { Text("Скопировано").font(.caption).foregroundStyle(.secondary) }
                             if item.kind == .task { Button(preview ? "Редактировать" : "Просмотр") { preview.toggle() }.buttonStyle(.plain).foregroundStyle(Palette.accent).font(.system(size: 11)) }
                         }
                         if item.kind == .note {
@@ -68,7 +84,7 @@ struct ItemInspector: View {
                             }
                             RichNoteEditor(text: binding(\.body, fallback: ""), action: format, tags: state.data.tags, editable: !item.deleted, commitTags: { state.commitHashtags(id) }).frame(minHeight: 260)
                         } else if preview {
-                            MarkdownPreview(text: item.body).frame(minHeight: 260)
+                            MarkdownPreview(text: item.body, taskLinks: true) { copiedAt = Date() }.frame(minHeight: 180)
                         } else {
                             HStack(spacing: 3) {
                                 formatButton("bold", "Жирный", "**", "**")
@@ -107,6 +123,15 @@ struct ItemInspector: View {
                     Spacer(); Text(state.errorMessage == nil ? "Сохранено на Mac" : "Ошибка сохранения").font(.system(size: 10)).foregroundStyle(.secondary)
                 }.padding(.horizontal, 12).padding(.vertical, 8)
             }.background(Palette.sidebar)
+                .onChange(of: id, initial: true) { _, _ in
+                    preview = !item.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    copiedAt = nil
+                }
+                .task(id: copiedAt) {
+                    guard copiedAt != nil else { return }
+                    try? await Task.sleep(for: .seconds(2))
+                    if !Task.isCancelled { copiedAt = nil }
+                }
         }
     }
     private func formatButton(_ symbol: String, _ title: String, _ before: String, _ after: String) -> some View {
@@ -278,6 +303,8 @@ struct CreationSheet: View {
     @ViewState private var itemKind: ItemKind = .task
     @ViewState private var parentID: UUID?
     @ViewState private var sectionError: String?
+    @ViewState private var moveOnCompletion: String?
+    @ViewState private var moveOnReopen: String?
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text(title).font(.system(size: 20, weight: .semibold))
@@ -287,6 +314,22 @@ struct CreationSheet: View {
             case .project(let id):
                 Picker("Тип", selection: $itemKind) { Text("Задачи").tag(ItemKind.task); Text("Заметки").tag(ItemKind.note) }.disabled(id != nil)
                 TextField("Папка (необязательно)", text: $folder)
+                if let id, let project = state.data.projects.first(where: { $0.id == id }), project.kind == .task {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Автоматизации").font(.system(size: 12, weight: .semibold))
+                        let sections = project.sections.contains("Готово") ? project.sections : project.sections + ["Готово"]
+                        Picker("При завершении", selection: $moveOnCompletion) {
+                            Text("Оставить на этапе").tag(nil as String?)
+                            ForEach(sections, id: \.self) { section in
+                                Text(project.sections.contains(section) ? section : "Создать этап «Готово»").tag(Optional(section))
+                            }
+                        }
+                        Picker("При возврате в работу", selection: $moveOnReopen) {
+                            Text("Вернуть на прежний этап").tag(nil as String?)
+                            ForEach(project.sections, id: \.self) { Text($0).tag(Optional($0)) }
+                        }
+                    }
+                }
             case .tag(let id):
                 Picker("Родительский тег", selection: $parentID) {
                     Text("Без родителя").tag(nil as UUID?)
@@ -325,7 +368,12 @@ struct CreationSheet: View {
         color = ProjectTagPalette.nextColor(in: state.data)
         if state.area == .notes { itemKind = .note }
         switch kind {
-        case .project(let id): if let p = state.data.projects.first(where: { $0.id == id }) { name = p.name; color = p.color; folder = p.folder; itemKind = p.kind }
+        case .project(let id):
+            if let p = state.data.projects.first(where: { $0.id == id }) {
+                name = p.name; color = p.color; folder = p.folder; itemKind = p.kind
+                moveOnCompletion = p.moveOnCompletion
+                moveOnReopen = p.moveOnReopen
+            }
         case .tag(let id): if let t = state.data.tags.first(where: { $0.id == id }) { name = t.name; color = t.color; parentID = t.parentID }
         case .section: break
         }
@@ -338,7 +386,14 @@ struct CreationSheet: View {
         case .project(let id):
             guard !state.data.projects.contains(where: { $0.id != id && $0.name.localizedCaseInsensitiveCompare(title) == .orderedSame }) else { state.errorMessage = "Проект с таким названием уже есть"; return }
             state.change { s in
-                if let i = s.projects.firstIndex(where: { $0.id == id }) { s.projects[i].name = title; s.projects[i].color = color; s.projects[i].folder = folder }
+                if let i = s.projects.firstIndex(where: { $0.id == id }) {
+                    s.projects[i].name = title; s.projects[i].color = color; s.projects[i].folder = folder
+                    if moveOnCompletion == "Готово", !s.projects[i].sections.contains("Готово") {
+                        s.projects[i].sections.append("Готово")
+                    }
+                    s.projects[i].moveOnCompletion = moveOnCompletion
+                    s.projects[i].moveOnReopen = moveOnReopen
+                }
                 else { var p = Project(name: title, color: color, kind: itemKind); p.folder = folder; s.projects.append(p) }
             }
         case .tag(let id):

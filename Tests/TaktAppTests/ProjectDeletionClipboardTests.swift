@@ -20,7 +20,7 @@ import TaktCore
     #expect(state.item(note.id)?.deleted == true && state.item(note.id)?.projectID == nil)
     #expect(state.scope == .inbox)
     _ = try state.data.validated()
-    state.undo(); #expect(state.data == before)
+    state.undo(); #expect(state.data.withoutTaskActivity == before.withoutTaskActivity)
 }
 
 @Test @MainActor func calendarClipboardCreatesIndependentCopiesAtPointerTimeAndUndo() throws {

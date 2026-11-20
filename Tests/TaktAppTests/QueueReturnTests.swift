@@ -13,7 +13,7 @@ import TaktCore
     #expect(returned.schedule == .day(state.calendar.startOfDay(for: item.schedule.date!)))
     #expect(returned.duration == item.duration && state.draggingID == nil)
     #expect(state.queue.contains { $0.id == item.id })
-    state.undo(); #expect(state.data == previous)
+    state.undo(); #expect(state.data.withoutTaskActivity == previous.withoutTaskActivity)
 }
 @Test @MainActor func returningToUndatedQueueClearsDateAndOtherFiltersCannotHideTask() throws {
     let state = AppState(demo: true)
@@ -55,7 +55,7 @@ import TaktCore
     #expect(state.item(id)?.duration == item.duration)
     #expect(!state.queue.contains { $0.id == id })
     state.undo()
-    #expect(state.item(id) == item)
+    #expect(state.item(id)?.withoutTaskActivity == item.withoutTaskActivity)
 }
 
 @Test @MainActor func returningToInboxAlwaysClearsDayAndProjectInOneUndoWithoutSwitchingQueue() throws {
@@ -76,7 +76,7 @@ import TaktCore
         #expect(returned.priority == original.priority && returned.duration == original.duration && returned.recurrence == original.recurrence)
         #expect(state.queueInboxOnly && state.queue.contains { $0.id == item.id })
         #expect(state.draggingID == nil && state.calendarEditingID == nil)
-        state.undo(); #expect(state.data == before)
+        state.undo(); #expect(state.data.withoutTaskActivity == before.withoutTaskActivity)
         state.redo(); #expect(state.item(item.id)?.projectID == nil && state.item(item.id)?.schedule == .unscheduled)
     }
 }

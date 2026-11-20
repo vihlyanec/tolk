@@ -2,8 +2,8 @@ import Foundation
 import Observation
 import TaktCore
 
-enum Area: String, CaseIterable { case tasks, calendar, notes, focus }
-enum Scope: Hashable { case all, inbox, today, week, completed, trash, project(UUID), tag(UUID) }
+enum Area: String, CaseIterable { case tasks, calendar, notes, focus, analytics }
+enum Scope: Hashable { case all, inbox, today, week, completed, wontDo, trash, project(UUID), tag(UUID) }
 enum Grouping: String, CaseIterable { case date = "Дата", project = "Проект", section = "Раздел", priority = "Приоритет", tag = "Тег", none = "Без группировки" }
 enum Sorting: String, CaseIterable { case manual = "Вручную", date = "Время", priority = "Приоритет", title = "Название", duration = "Длительность" }
 struct TaskGroup: Identifiable { let id: String; var items: [Item] }
@@ -96,7 +96,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         catch { errorMessage = error.localizedDescription }
     }
     func startFocus(_ item: Item) {
-        guard item.kind == .task, !item.deleted, !item.completed else { return }
+        guard item.isActiveTask else { return }
         if let current = pomodoro.session {
             if current.taskID == item.id { area = .focus }
             else { pendingFocusTask = item }
@@ -104,7 +104,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
     }
     /// Resolve the current record rather than trusting a potentially stale banner.
     @discardableResult func focusFromNotification(_ id: UUID) -> Bool {
-        guard let item = item(id), item.kind == .task, !item.deleted, !item.completed else { return false }
+        guard let item = item(id), item.isActiveTask else { return false }
         if let current = pomodoro.session {
             if current.taskID == id, current.phase == .focus, current.seconds(at: Date()) > 0 {
                 if current.deadline == nil { pomodoro.resume() }
@@ -156,7 +156,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         switch scope {
         case .all: area == .notes ? "Заметки" : "Все задачи"
         case .inbox: "Входящие"; case .today: "Сегодня"; case .week: "Следующие 7 дней"
-        case .completed: "Завершённые"; case .trash: "Корзина"
+        case .completed: "Завершённые"; case .wontDo: "Не буду выполнять"; case .trash: "Корзина"
         case .project(let id): data.projects.first { $0.id == id }?.name ?? "Проект"
         case .tag(let id): "#" + (data.tags.first { $0.id == id }?.name ?? "Тег")
         }
@@ -165,7 +165,10 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         guard database != nil || memoryOnly else { return }
         let previous = data
         var next = previous; mutate(&next)
-        if undo { SyncEngine.enqueueChanges(in: &next) }
+        if undo {
+            next.recordTaskChanges(since: previous)
+            SyncEngine.enqueueChanges(in: &next)
+        }
         do { try AccountEngine.enqueue(in: &next) }
         catch { errorMessage = "Не сохранено: " + error.localizedDescription; return }
         guard next != previous else { return }
@@ -274,31 +277,57 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         }
         selectedID = item.id
         guard data.items.contains(where: { $0.id == item.id }) else { return nil }
-        if scope == .completed || scope == .trash { scope = .inbox }
+        if scope == .completed || scope == .wontDo || scope == .trash { scope = .inbox }
         return item.id
     }
     func complete(_ id: UUID) {
-        guard let item = item(id), item.kind == .task, !item.deleted else { return }
+        guard let item = item(id), item.kind == .task, !item.deleted, item.wontDoAt == nil else { return }
         change { snapshot in
             if !snapshot.items.contains(where: { $0.id == id }) { snapshot.items.append(item) }
             guard let index = snapshot.items.firstIndex(where: { $0.id == id }) else { return }
+            let now = Date()
             snapshot.items[index].completed.toggle()
-            snapshot.items[index].modified = Date()
-            if !item.completed, let next = RecurringCalendar.next(item, in: snapshot.items, calendar: calendar),
-               !snapshot.items.contains(where: { $0.id == next.id || ($0.recurrenceSourceID == next.recurrenceSourceID && ($0.recurrenceOriginalDate ?? $0.schedule.date) == next.recurrenceOriginalDate) || $0.repeatParentID == id }) {
-                snapshot.items.append(next)
+            snapshot.items[index].modified = now
+            snapshot.items[index].completedAt = item.completed ? nil : now
+            let project = snapshot.projects.first { $0.id == item.projectID && !$0.archived }
+            if let project {
+                let destination = item.completed ? project.moveOnReopen ?? (item.section == project.moveOnCompletion ? item.sectionBeforeCompletion : nil) : project.moveOnCompletion
+                if let destination, project.sections.contains(destination), item.section != destination {
+                    if !item.completed { snapshot.items[index].sectionBeforeCompletion = item.section }
+                    snapshot.items[index].section = destination
+                }
             }
+            if item.completed { snapshot.items[index].sectionBeforeCompletion = nil }
+            if !item.completed { appendNextOccurrence(of: item, to: &snapshot, now: now) }
         }
         if !item.completed, data.items.first(where: { $0.id == id })?.completed == true {
             onTaskCompleted(data.preferences)
         }
+    }
+    func toggleWontDo(_ id: UUID) {
+        guard let item = item(id), item.kind == .task, !item.deleted, !item.completed else { return }
+        change { snapshot in
+            if !snapshot.items.contains(where: { $0.id == id }) { snapshot.items.append(item) }
+            guard let index = snapshot.items.firstIndex(where: { $0.id == id }) else { return }
+            let now = Date()
+            snapshot.items[index].wontDoAt = item.wontDoAt == nil ? now : nil
+            snapshot.items[index].modified = now
+            if item.wontDoAt == nil { appendNextOccurrence(of: item, to: &snapshot, now: now) }
+        }
+    }
+    private func appendNextOccurrence(of item: Item, to snapshot: inout Snapshot, now: Date) {
+        guard var next = RecurringCalendar.next(item, in: snapshot.items, calendar: calendar),
+              !snapshot.items.contains(where: { $0.id == next.id || ($0.recurrenceSourceID == next.recurrenceSourceID && ($0.recurrenceOriginalDate ?? $0.schedule.date) == next.recurrenceOriginalDate) || $0.repeatParentID == item.id }) else { return }
+        next.created = now
+        next.modified = now
+        snapshot.items.append(next)
     }
     func schedule(_ id: UUID, at date: Date) { update(id) { $0.schedule = .timed(date) } }
     func unschedule(_ id: UUID, clearDay: Bool = false) {
         update(id) { item in item.schedule = clearDay ? .unscheduled : item.schedule.date.map { .day(calendar.startOfDay(for: $0)) } ?? .unscheduled }
     }
     @discardableResult func returnToQueue(_ id: UUID, intoInbox: Bool? = nil, clearDate: Bool? = nil) -> Bool {
-        guard let value = item(id), value.kind == .task, !value.deleted, !value.completed else { endDrag(); return false }
+        guard let value = item(id), value.isActiveTask else { endDrag(); return false }
         let inbox = intoInbox ?? queueInboxOnly
         if inbox {
             // Inbox is a destination, not just a visibility filter. Move and clear
@@ -438,7 +467,9 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         guard let edit = past.last else { return }
         do {
             var previous = preservingStickyLayout(in: try edit.restoring(in: data))
+            previous.recordTaskChanges(since: data)
             SyncEngine.enqueueChanges(in: &previous)
+            try AccountEngine.enqueue(in: &previous)
             let inverse = SnapshotEdit(before: data, after: previous)
             try database?.save(previous); future.append(inverse); data = previous; past.removeLast(); didSave()
         } catch { errorMessage = error.localizedDescription }
@@ -447,7 +478,9 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         guard let edit = future.last else { return }
         do {
             var next = preservingStickyLayout(in: try edit.restoring(in: data))
+            next.recordTaskChanges(since: data)
             SyncEngine.enqueueChanges(in: &next)
+            try AccountEngine.enqueue(in: &next)
             let inverse = SnapshotEdit(before: data, after: next)
             try database?.save(next); past.append(inverse); data = next; future.removeLast(); didSave()
         } catch { errorMessage = error.localizedDescription }
@@ -516,7 +549,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
     }
     func taskCount(in scope: Scope) -> Int { items(in: scope, searchText: "", activeOnly: true).count }
     func folderTaskCount(_ folder: String) -> Int { activeProjects.filter { $0.folder == folder && $0.kind == .task }.reduce(0) { $0 + taskCount(in: .project($1.id)) } }
-    func isOverdue(_ item: Item) -> Bool { !item.completed && (item.schedule.date.map { $0 < calendar.startOfDay(for: Date()) } ?? false) }
+    func isOverdue(_ item: Item) -> Bool { item.isActiveTask && (item.schedule.date.map { $0 < calendar.startOfDay(for: Date()) } ?? false) }
     var overdueTasks: [Item] { items(in: .all, searchText: "", activeOnly: true).filter(isOverdue) }
     func postponeOverdueToToday() {
         let ids = Set(overdueTasks.map(\.id)), today = calendar.startOfDay(for: Date())
@@ -543,11 +576,19 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
             default: guard item.kind == (kind ?? (area == .notes ? .note : .task)) else { return false }
             }
             if scope == .completed { return item.completed && matchesSearch(item) }
-            if item.completed && (activeOnly || !data.preferences.showCompleted) { return false }
+            if scope == .wontDo { return item.wontDoAt != nil && matchesSearch(item) }
+            if item.wontDoAt != nil { return false }
+            if item.completed {
+                if activeOnly { return false }
+                if !data.preferences.showCompleted {
+                    guard case .project(let id) = scope,
+                          data.projects.first(where: { $0.id == id })?.moveOnCompletion == item.section else { return false }
+                }
+            }
             if let id = item.projectID, data.projects.first(where: { $0.id == id })?.archived == true { return false }
             let matches: Bool
             switch scope {
-            case .all, .completed, .trash: matches = true
+            case .all, .completed, .wontDo, .trash: matches = true
             case .inbox: matches = item.projectID == nil
             case .project(let id): matches = item.projectID == id
             case .tag(let id): matches = !tagIDs(for: item).isDisjoint(with: tagFamily(id))

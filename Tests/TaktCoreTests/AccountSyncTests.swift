@@ -33,6 +33,37 @@ private func cloudResponse(_ records: [AccountRecord], cursor: Int = 1, more: Bo
     let json = String(decoding:data,as:UTF8.self)
     #expect(!json.contains("connectionID") && !json.contains("outbox") && !json.contains("accountSync"))
 }
+@Test func taskWorkflowNegotiatesServerSupportAndSendsPendingFieldClears() throws {
+    var snapshot = Snapshot()
+    let account = UUID().uuidString
+    var project = Project(name: "Работа")
+    project.sections.append("Готово")
+    project.moveOnCompletion = "Готово"
+    var item = Item(title: "Смета", projectID: project.id)
+    item.wontDoAt = Date(timeIntervalSinceReferenceDate: 816826000)
+    item.taskActivity = [TaskActivity(date: item.wontDoAt!, changes: ["wontDo"])]
+    snapshot.projects = [project]
+    snapshot.items = [item]
+    snapshot.accountSync = AccountSyncState(accountID: account, name: "QA")
+    let legacy = try AccountCodec.records(snapshot, accountID: account).map { record in
+        var record = record
+        record.version = 1
+        return record
+    }
+    #expect(legacy.allSatisfy { $0.data["wontDoAt"] == nil && $0.data["moveOnCompletion"] == nil && $0.data["taskActivity"] == nil })
+    var response = try cloudResponse(legacy)
+    response.taskWorkflow = true
+    try AccountEngine.receive(response, sent: [], in: &snapshot)
+    #expect(snapshot.items.first == item && snapshot.projects.first == project)
+    try AccountEngine.enqueue(in: &snapshot)
+    #expect(snapshot.accountSync?.pending.first { $0.kind == "task" }?.patch["wontDoAt"] == .number(816826000))
+    #expect(snapshot.accountSync?.pending.first { $0.kind == "project" }?.patch["moveOnCompletion"] == .string("Готово"))
+    snapshot.items[0].wontDoAt = nil
+    snapshot.projects[0].moveOnCompletion = nil
+    try AccountEngine.enqueue(in: &snapshot)
+    #expect(snapshot.accountSync?.pending.last { $0.kind == "task" }?.patch["wontDoAt"] == .null)
+    #expect(snapshot.accountSync?.pending.last { $0.kind == "project" }?.patch["moveOnCompletion"] == .null)
+}
 @Test func cloudOutboxSurvivesRestartAndRemoteChangesPreserveNewerLocalEdits() throws {
     let account = UUID().uuidString
     var snapshot = Snapshot(); let item = Item(title:"До")

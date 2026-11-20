@@ -6,10 +6,12 @@ from zoneinfo import ZoneInfo
 
 ITEM_OPTIONAL = {'repeatEveryDays', 'recurrenceSourceID', 'recurrenceEndDate', 'recurrenceOriginalDate',
                  'repeatParentID', 'externalRecurrence', 'reminderMinutes', 'timedReminderOffsets',
-                 'allDayReminders', 'stickyFrame', 'stickyCollapsed', 'stickyExpandedHeight'}
+                 'allDayReminders', 'stickyFrame', 'stickyCollapsed', 'stickyExpandedHeight',
+                 'completedAt', 'wontDoAt', 'sectionBeforeCompletion', 'taskActivity'}
 ITEM_FIELDS = ITEM_OPTIONAL | {'itemKind','section','tagIDs','duration','created','modified','checklist','recurrence',
                                'stickyOpen','stickyPinned','stickyColor','schedule','order'}
-PROJECT_FIELDS = {'itemKind','folder','sections','archived','kanban','order'}
+PROJECT_FIELDS = {'itemKind','folder','sections','archived','kanban','order','moveOnCompletion','moveOnReopen'}
+ACTIVITY_LIMIT = 100
 SETTINGS_FIELDS = {'hourHeight','calendarUXVersion','showCompleted','shiftedShortcuts','completionSoundEnabled',
  'completionHapticsEnabled','quickDraft','quickDraftBody','quickDraftDescriptionExpanded','quickDraftLiterals',
  'defaultTimedReminderOffsets','defaultAllDayReminders','grouping','sorting','integrations','calendarEvents'}
@@ -19,7 +21,7 @@ def extras(kind, patch, invalid, identifier, allow_blank_title=False):
     allowed = {'task':ITEM_FIELDS, 'project':PROJECT_FIELDS, 'tag':{'title','color','parentID','deleted','order'}, 'settings':SETTINGS_FIELDS, 'event':{'title','notes','location','url','start','end','allDay','tentative','timeZone','calendarID','sourceID','eventID','externalID','occurrence','deleted','day','owner'}}.get(kind,set())
     selected = {k:v for k,v in patch.items() if k in allowed}
     for key, value in selected.items():
-        if value is None and (key in ITEM_OPTIONAL or key in SETTINGS_FIELDS or key in {'parentID','url','externalID'}): continue
+        if value is None and (key in ITEM_OPTIONAL or key in SETTINGS_FIELDS or key in {'parentID','url','externalID','moveOnCompletion','moveOnReopen'}): continue
         if key == 'schedule':
             if not isinstance(value,dict) or value.get('kind') not in {'none','day','timed'}: raise invalid('Некорректная дата')
             if value['kind']=='day':
@@ -33,6 +35,21 @@ def extras(kind, patch, invalid, identifier, allow_blank_title=False):
             elif set(value)!={'kind'}: raise invalid('Некорректная дата')
         elif key in {'itemKind','recurrence'}:
             if value not in ({'task','note'} if key=='itemKind' else {'none','daily','weekdays','weekly','monthly','intervalDays'}): raise invalid('Неизвестный вид записи')
+        elif key in {'completedAt', 'wontDoAt'}:
+            if type(value) not in (int, float) or not -63113904000 <= value <= 252423993599:
+                raise invalid('Некорректная дата изменения')
+        elif key == 'taskActivity':
+            if not isinstance(value, list) or len(value) > ACTIVITY_LIMIT:
+                raise invalid('Некорректная история задачи')
+            for event in value:
+                if not isinstance(event, dict) or event.keys() != {'id', 'date', 'changes'}:
+                    raise invalid('Некорректная история задачи')
+                identifier(event['id'])
+                if type(event['date']) not in (int, float) or not -63113904000 <= event['date'] <= 252423993599:
+                    raise invalid('Некорректная дата истории')
+                changes = event['changes']
+                if not isinstance(changes, list) or not 1 <= len(changes) <= 16 or any(not isinstance(c, str) or len(c) > 32 for c in changes):
+                    raise invalid('Некорректное действие в истории')
         elif key in {'duration','repeatEveryDays','reminderMinutes','hourHeight','created','modified','recurrenceEndDate','recurrenceOriginalDate','stickyExpandedHeight','calendarUXVersion','order','start','end','occurrence'}:
             if type(value) not in (int,float) or not math.isfinite(value): raise invalid('Некорректное число')
             if key=='duration' and (type(value) is not int or not 1<=value<=10080): raise invalid('Некорректная длительность')
@@ -119,6 +136,9 @@ def next_recurrence(current, records, zone):
     id=str(uuid.UUID(bytes=bytes(digest)))
     if id in by_id or any((r['data'].get('repeatParentID') or '').lower()==current['id'].lower() for r in records):return None
     result=copy.deepcopy(current);result.pop('id',None)
+    result['section'] = result.get('sectionBeforeCompletion') or result.get('section', 'Без раздела')
+    for field in ('completedAt', 'wontDoAt', 'sectionBeforeCompletion', 'taskActivity'):
+        result.pop(field, None)
     result.update(completed=False,deleted=False,stickyOpen=False,stickyFrame=None,recurrenceSourceID=root,repeatParentID=current['id'],recurrenceOriginalDate=target.timestamp()-978307200)
     result['schedule']={'kind':'timed','instant':target.timestamp()} if schedule['kind']=='timed' else {'kind':'day','day':target.date().isoformat()}
     result['checklist']=[{'id':str(uuid.uuid4()),'title':c['title'],'done':False} for c in result.get('checklist',[])]

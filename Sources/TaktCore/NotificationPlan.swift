@@ -23,7 +23,7 @@ public enum NotificationPlan {
     public static func events(snapshot: Snapshot, now: Date = Date()) -> [PlannedReminder] {
         let calendar = Dates.calendar(zone: snapshot.preferences.timeZone)
         var result: [PlannedReminder] = []
-        for item in snapshot.items where item.kind == .task && !item.completed && !item.deleted {
+        for item in snapshot.items where item.isActiveTask {
             guard let start = item.schedule.date else { continue }
             var dates: [Date] = []
             if item.schedule.isTimed {

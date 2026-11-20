@@ -87,7 +87,7 @@ import TaktCore
     #expect(state.data.items.first { $0.id == task.id }?.deleted == true)
     #expect(state.calendarItems.contains { $0.recurrenceSourceID == task.id && !$0.deleted })
     state.undo()
-    #expect(state.data == before)
+    #expect(state.data.withoutTaskActivity == before.withoutTaskActivity)
 }
 
 @Test @MainActor func deletingFutureSeriesKeepsHistoryAndStopsProjectionAndCompletion() throws {
@@ -108,7 +108,7 @@ import TaktCore
     let saved = try JSONDecoder().decode(Snapshot.self, from: JSONEncoder().encode(state.data))
     #expect(saved.items.first { $0.id == root.id }?.recurrenceEndDate == next.schedule.date)
     state.undo(); state.undo()
-    #expect(state.data == before)
+    #expect(state.data.withoutTaskActivity == before.withoutTaskActivity)
     state.delete(root.id); state.confirmRecurringDeletion(following: true)
     #expect(state.calendarItems.isEmpty)
     #expect(state.data.items.allSatisfy { $0.deleted })

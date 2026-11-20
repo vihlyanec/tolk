@@ -61,7 +61,7 @@ def reminders(records,prefs,now):
     zone=ZoneInfo(prefs.get('timeZone','Europe/Moscow'))
     for record in records:
         d=record['data'];id=record['id'];schedule=d.get('schedule')
-        if d.get('deleted') or d.get('completed') or d.get('itemKind')=='note':continue
+        if d.get('deleted') or d.get('completed') or d.get('wontDoAt') is not None or d.get('itemKind')=='note':continue
         if not schedule:
             from schema import legacy_schedule
             try:schedule=legacy_schedule(d,str(zone))

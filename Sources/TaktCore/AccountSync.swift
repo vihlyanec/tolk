@@ -39,6 +39,7 @@ public struct AccountSyncState: Codable, Equatable, Sendable {
     public var pending: [AccountOperation] = []
     public var conflicts: [AccountConflict] = []
     public var lastSuccess: Date?
+    public var taskWorkflow: Bool?
     public init(accountID: String, name: String) { self.accountID = accountID.lowercased(); self.name = name }
 }
 public struct AccountResult: Codable, Sendable {
@@ -53,18 +54,23 @@ public struct AccountResponse: Codable, Sendable {
     public var cursor: Int
     public var more: Bool
     public var epoch: String
+    public var taskWorkflow: Bool? = nil
 }
 
 public enum AccountCodec {
+    private static let workflowProject = ["moveOnCompletion", "moveOnReopen"]
+    private static let workflowItem = ["completedAt", "wontDoAt", "sectionBeforeCompletion", "taskActivity"]
     private static let optionalItem = ["repeatEveryDays","recurrenceSourceID","recurrenceEndDate","recurrenceOriginalDate","repeatParentID","externalRecurrence","reminderMinutes","timedReminderOffsets","allDayReminders","stickyFrame","stickyCollapsed","stickyExpandedHeight"]
     private static func fields<T: Encodable>(_ value: T) throws -> SyncFields { try JSONDecoder().decode(SyncFields.self, from: JSONEncoder().encode(value)) }
     private static func decode<T: Decodable>(_ type: T.Type, _ data: SyncFields) throws -> T { try JSONDecoder().decode(type, from: JSONEncoder().encode(data)) }
     public static func records(_ snapshot: Snapshot, accountID: String) throws -> [AccountRecord] {
         var records: [AccountRecord] = []
+        let supportsWorkflow = snapshot.accountSync.map { $0.taskWorkflow == true } ?? true
         for (order, project) in snapshot.projects.enumerated() {
             if project.archived && snapshot.accountSync?.records["project:" + project.id.uuidString.lowercased()]?.data["deleted"]?.bool == true { continue }
             var data = try fields(project); data["id"] = nil; data["order"] = .number(Double(order)); data["title"] = data.removeValue(forKey: "name")
             data["itemKind"] = data.removeValue(forKey: "kind"); data["deleted"] = .bool(false)
+            if !supportsWorkflow { for key in workflowProject { data[key] = nil } }
             records.append(AccountRecord(id: project.id.uuidString, kind: "project", data: data))
         }
         func depth(_ tag: Tag) -> Int {
@@ -83,6 +89,7 @@ public enum AccountCodec {
             data["tagIDs"] = .array(item.tagIDs.map { .string($0.uuidString.lowercased()) })
             data["projectID"] = item.projectID.map { .string($0.uuidString.lowercased()) } ?? .string("")
             for key in optionalItem where data[key] == nil { data[key] = .null }
+            if !supportsWorkflow { for key in workflowItem { data[key] = nil } }
             switch item.schedule {
             case .unscheduled: data["schedule"] = .object(["kind":.string("none")])
             case .day(let day):
@@ -223,7 +230,13 @@ public enum AccountEngine {
         for record in current {
             live.insert(record.key)
             let previous = overlay[record.key]
-            let patch = record.data.filter { previous?.data[$0.key] != $0.value }
+            var patch = record.data.filter { previous?.data[$0.key] != $0.value }
+            if sync.taskWorkflow == true, let previous {
+                let fields = record.kind == "task" ? ["completedAt", "wontDoAt", "sectionBeforeCompletion"] : record.kind == "project" ? ["moveOnCompletion", "moveOnReopen"] : []
+                for key in fields where record.data[key] == nil && previous.data[key] != nil && previous.data[key] != .null {
+                    patch[key] = .null
+                }
+            }
             guard !patch.isEmpty else { continue }
             var base = sync.records[record.key] ?? AccountRecord(id:record.id,kind:record.kind)
             base.version = sync.records[record.key]?.version ?? 0
@@ -278,6 +291,7 @@ public enum AccountEngine {
         }
         response.changes.forEach(apply)
         sync.cursor = response.cursor; sync.epoch = response.epoch
+        sync.taskWorkflow = response.taskWorkflow
         snapshot.accountSync = sync
         guard !response.more else { return } // References may arrive on the next page.
         if sync.recovering == true {

@@ -7,6 +7,7 @@ import sqlite3
 import time
 import uuid
 from schema import extras, legacy_schedule, next_recurrence
+from task_activity import merge_activity, web_task_changes
 from push import setup as setup_push
 from contextlib import contextmanager
 
@@ -215,7 +216,7 @@ class Store:
                 if not isinstance(expected, dict) or expected.keys() - patch.keys():
                     raise Invalid("Некорректная исходная запись")
                 conflicts = [key for key, value in patch.items()
-                             if key != "modified" and field_versions.get(key, 0) > base and current["data"].get(key) != value
+                             if key not in {"modified", "taskActivity"} and field_versions.get(key, 0) > base and current["data"].get(key) != value
                              and (key not in expected or current["data"].get(key) != expected[key])]
                 # Deleting an edited record and editing a deleted record require explicit resolution.
                 if base > current["version"] or (not row and base != 0):
@@ -224,12 +225,17 @@ class Store:
                     conflicts = sorted(set(conflicts) | {"deleted"})
                 if kind == 'task' and ('date' in patch or 'time' in patch) and field_versions.get('schedule',0)>base:
                     conflicts=sorted(set(conflicts)|{'schedule'})
+                if kind == 'task' and patch.get('wontDoAt') is not None and current['data'].get('completed') and field_versions.get('completed', 0) > base:
+                    conflicts = sorted(set(conflicts) | {'wontDoAt'})
+                if kind == 'task' and patch.get('completed') is True and current['data'].get('wontDoAt') is not None and field_versions.get('wontDoAt', 0) > base:
+                    conflicts = sorted(set(conflicts) | {'completed'})
                 if conflicts:
                     results.append({"id": operation_id, "accepted": False, "fields": conflicts, "record": current})
                     continue
                 if not row and kind in {"task", "project", "tag"} and "title" not in patch:
                     raise Invalid("Новая запись должна иметь название")
                 merged = current["data"] | patch
+                destination_project = {}
                 if kind == 'task' and ('date' in patch or 'time' in patch):
                     prefs=db.execute("SELECT data FROM entities WHERE account=? AND kind='settings' AND id=?",(account,account)).fetchone()
                     zone=json.loads(prefs[0]).get('timeZone','Europe/Moscow') if prefs else 'Europe/Moscow'
@@ -257,12 +263,31 @@ class Store:
                         linked = db.execute("SELECT data FROM entities WHERE account=? AND kind='project' AND id=?", (account, project)).fetchone()
                         if not linked or json.loads(linked[0]).get("deleted"):
                             raise Invalid("Проект недоступен")
+                        destination_project = json.loads(linked[0])
+                        if destination_project.get('archived'):
+                            destination_project = {}
                 if kind == "settings" and merged.get("startHour", 7) >= merged.get("endHour", 23):
                     raise Invalid("Конец дня должен быть позже начала")
-                if kind == 'task' and not native:
-                    merged['modified']=time.time()-978307200
-                    patch=patch|{'modified':merged['modified']}
+                if kind == 'task':
+                    now = time.time() - 978307200
+                    additions = {}
+                    if 'taskActivity' in patch:
+                        additions['taskActivity'] = merge_activity(current['data'].get('taskActivity'), patch['taskActivity'])
+                    if not native:
+                        additions['modified'] = now
+                        if merged.get('created') is None:
+                            additions['created'] = now
+                        if row and merged.get('itemKind') != 'note':
+                            additions.update(web_task_changes(current['data'], merged, destination_project, now))
+                    if merged.get('completed') and merged.get('wontDoAt') is not None:
+                        if patch.get('completed') is True:
+                            additions['wontDoAt'] = None
+                        else:
+                            raise Invalid('Верните задачу в работу перед изменением статуса')
+                    merged.update(additions)
+                    patch = patch | additions
                 was_completed=current['data'].get('completed',False)
+                newly_skipped = current['data'].get('wontDoAt') is None and merged.get('wontDoAt') is not None
                 current["data"] = merged
                 current["version"] += 1
                 field_versions.update({key: current["version"] for key in patch})
@@ -282,13 +307,14 @@ class Store:
                             version=linked['version']+1;payload.update(changes);field_map=json.loads(linked['fields']);field_map.update({k:version for k in changes})
                             db.execute('UPDATE entities SET version=?,data=?,fields=? WHERE account=? AND kind=? AND id=?',(version,json.dumps(payload),json.dumps(field_map),account,linked['kind'],linked['id']))
                             db.execute('INSERT INTO changes(account,record) VALUES(?,?)',(account,json.dumps({'id':linked['id'],'kind':linked['kind'],'version':version,'data':payload})))
-                if kind == 'task' and not native and patch.get('completed') is True and not was_completed:
+                if kind == 'task' and not native and ((patch.get('completed') is True and not was_completed) or newly_skipped):
                     rows=[{'id':r['id'],'data':json.loads(r['data'])} for r in db.execute("SELECT id,data FROM entities WHERE account=? AND kind='task'",(account,))]
                     prefs=db.execute("SELECT data FROM entities WHERE account=? AND kind='settings' AND id=?",(account,account)).fetchone()
                     zone=json.loads(prefs[0]).get('timeZone','Europe/Moscow') if prefs else 'Europe/Moscow'
                     next_item=next_recurrence(merged|{'id':entity_id},rows,zone)
                     if next_item:
                         child_id,child=next_item
+                        child.update(created=now, modified=now)
                         child_record={'id':child_id,'kind':'task','version':1,'data':child}
                         db.execute('INSERT INTO entities VALUES(?,?,?,?,?,?)',(account,'task',child_id,1,json.dumps(child),json.dumps({k:1 for k in child})))
                         db.execute('INSERT INTO changes(account,record) VALUES(?,?)',(account,json.dumps(child_record)))
@@ -300,7 +326,7 @@ class Store:
                 count=len(row['record'])
                 if changes and (len(changes)>=500 or size+count>2000000):more=True;break
                 changes.append(row);size+=count
-            return {"epoch": self.epoch, "results": results, "changes": [json.loads(row["record"]) for row in changes],
+            return {"epoch": self.epoch, "taskWorkflow": True, "results": results, "changes": [json.loads(row["record"]) for row in changes],
                     "cursor": changes[-1]["seq"] if changes else cursor, "more": more}
 
     def begin_pairing(self, name):

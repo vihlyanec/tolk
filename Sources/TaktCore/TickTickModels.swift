@@ -200,7 +200,9 @@ public enum TickTickCodec {
         var value = item
         value.title = remote.title; value.body = remote.raw["content"]?.string ?? ""
         value.priority = [0:0, 5:1, 3:2, 1:3][remote.raw["priority"]?.int ?? 0] ?? 0
+        if value.completed != remote.completed { value.completedAt = nil }
         value.completed = remote.completed
+        if value.completed { value.wontDoAt = nil }
         let zone = remote.raw["timeZone"]?.string.flatMap(TimeZone.init(identifier:))?.identifier ?? snapshot.preferences.timeZone
         let remoteCalendar = Dates.calendar(zone: zone), localCalendar = Dates.calendar(zone: snapshot.preferences.timeZone)
         if let date = date(remote.raw["startDate"]?.string) ?? date(remote.raw["dueDate"]?.string) {

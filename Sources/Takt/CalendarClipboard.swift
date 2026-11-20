@@ -21,6 +21,7 @@ enum CalendarClipboard {
         var item = source
         item.id = UUID(); item.schedule = target; item.created = now; item.modified = now
         item.completed = false; item.deleted = false
+        item.completedAt = nil; item.wontDoAt = nil; item.taskActivity = nil; item.sectionBeforeCompletion = nil
         item.recurrence = .none; item.repeatEveryDays = nil; item.externalRecurrence = nil
         item.recurrenceSourceID = nil; item.repeatParentID = nil
         item.recurrenceOriginalDate = nil; item.recurrenceEndDate = nil

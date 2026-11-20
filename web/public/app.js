@@ -1,5 +1,5 @@
 import {parseQuick} from './smart.js?v=20261117-project-path';
-import {calendarWeekLayout,dayAndTime,scheduleFromWall} from './model.js?v=20261118-calendar';
+import {calendarWeekLayout,dayAndTime,scheduleFromWall,referenceDate,taskDescriptionParts,taskStatistics} from './model.js?v=20261120-workflow';
 import * as Pomodoro from './pomodoro.js?v=20261111';
 import {Client, api} from './sync.js?v=20261111';
 const client = new Client();
@@ -7,6 +7,27 @@ const root = document.querySelector('#app');
 const editor = document.querySelector('#editor');
 let view = 'all', projectID = '', selectedDay = '', search = '', session = {}, noticeTimer;
 let showCompleted = false;
+let analyticsDays = 30, analyticsTag = '';
+const workflowDate = () => Date.now() / 1000 - 978307200;
+const activeTask = ({data}) => !data.deleted && data.itemKind !== 'note' && !data.completed && data.wontDoAt == null;
+const closedView = () => view === 'completed' || view === 'wontDo';
+const collapsedSection = id => localStorage.getItem('tolk-sidebar-' + id) === 'collapsed';
+function bindSidebarSections(container) {
+  container.querySelectorAll('[data-sidebar-toggle]').forEach(button => {
+    const id = button.dataset.sidebarToggle;
+    const rows = container.querySelectorAll(`[data-sidebar-items="${id}"]`);
+    const update = () => {
+      const collapsed = collapsedSection(id);
+      button.setAttribute('aria-expanded', String(!collapsed));
+      rows.forEach(row => { row.hidden = collapsed; });
+    };
+    button.onclick = () => {
+      localStorage.setItem('tolk-sidebar-' + id, collapsedSection(id) ? 'expanded' : 'collapsed');
+      update();
+    };
+    update();
+  });
+}
 const paths = {
   flag: '<path d="M5 21V3m0 0c4-3 8 3 14 0v10c-6 3-10-3-14 0"/>',
   timer: '<circle cx="12" cy="13" r="8"/><path d="M9 2h6m-3 0v3m0 4v5l3 2m4-12 2 2"/>',
@@ -25,6 +46,10 @@ const paths = {
   more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
   tasks: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 3 3 5-7"/>',
   all: '<path d="M9 5h12M9 12h12M9 19h12m-18-14h1m-1 7h1m-1 7h1"/>',
+  analytics: '<path d="M4 4v16h16M8 16v-4m5 4V8m5 8V4"/>',
+  completed: '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
+  wontDo: '<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>',
+  returnTask: '<path d="m10 6-5 5 5 5M5 11h10a4 4 0 0 1 4 4"/>',
   settings: '<path d="m12 2 8 5v10l-8 5-8-5V7Z"/><circle cx="12" cy="12" r="3"/>',
   bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>',
   close: '<path d="m6 6 12 12M6 18 18 6"/>',
@@ -84,25 +109,32 @@ function navigate(next, id = '') {
 }
 function openMenu() {
   const drawer = document.querySelector('#drawer');
-  const active = client.records('task').filter(r => !r.data.deleted && !r.data.completed);
+  const active = client.records('task').filter(activeTask);
   const rows = [
     ['today','Сегодня','calendar',active.filter(r => r.data.date && r.data.date <= today()).length],
     ['inbox','Входящие','inbox',active.filter(r => !r.data.projectID).length],
     ['all','Все задачи','all',active.length],
     ['projects','Проекты','projects',projects().length],
     ['notes','Заметки','projects',client.records('task').filter(r=>!r.data.deleted&&r.data.itemKind==='note').length],
-    ['tags','Метки','filter',tags().length],
+    ['completed','Завершённые','completed',client.records('task').filter(r=>!r.data.deleted&&r.data.completed&&r.data.itemKind!=='note').length],
+    ['wontDo','Не буду выполнять','wontDo',client.records('task').filter(r=>!r.data.deleted&&r.data.wontDoAt!=null&&r.data.itemKind!=='note').length],
+    ['analytics','Аналитика','analytics',0],
   ];
   const name = client.account.name;
   const initials = name.trim().split(/\s+/).slice(0,2).map(part => part[0]).join('').toLocaleUpperCase();
   drawer.innerHTML = `<div class="drawer-layout"><header class="drawer-profile"><button class="profile" data-view="account"><span class="avatar">${escape(initials)}</span><strong>${escape(name)}</strong></button><div class="profile-tools"><button aria-label="Состояние синхронизации" id="drawer-sync">${icon('bell')}${client.state.conflicts.length ? '<i></i>' : ''}</button><button aria-label="Настройки" data-view="account">${icon('settings')}</button></div></header>
     <button class="drawer-shortcut" data-view="projects"><span>${icon('projects')}</span>Проекты</button>
     <nav class="drawer-links" aria-label="Списки задач">${rows.map(([id,label,symbol,count]) => `<button data-view="${id}" ${view === id && !projectID ? 'aria-current="page"' : ''}><span class="drawer-symbol">${icon(symbol)}</span><span>${label}</span><small>${count || ''}</small></button>`).join('')}
-    ${projects().map(project => `<button data-project="${project.id}" ${projectID === project.id ? 'aria-current="page"' : ''}><span class="drawer-symbol project-folder">${icon('projects')}</span><span>${escape(project.data.title)}</span><small>${active.filter(r => r.data.projectID === project.id).length || ''}</small></button>`).join('')}
+    <button class="drawer-disclosure" data-sidebar-toggle="projects">${icon('chevron')}<span>Проекты</span></button>
+    ${projects().map(project => `<button data-sidebar-items="projects" data-project="${project.id}" ${projectID === project.id ? 'aria-current="page"' : ''}><span class="drawer-symbol project-folder">${icon('projects')}</span><span>${escape(project.data.title)}</span><small>${active.filter(r => r.data.projectID === project.id).length || ''}</small></button>`).join('')}
+    <button class="drawer-disclosure" data-sidebar-toggle="tags">${icon('chevron')}<span>Метки</span></button>
+    ${tags().map(tag => `<button data-sidebar-items="tags" data-tag="${tag.id}"><span class="drawer-symbol">#</span><span>${escape(tag.data.title)}</span></button>`).join('')}
     <button id="drawer-trash"><span class="drawer-symbol">${icon('trash')}</span><span>Корзина</span><small>${client.records('task').filter(r => r.data.deleted).length || ''}</small></button></nav>
     <footer class="drawer-footer"><button class="round-button" aria-label="Новый проект" id="drawer-add">${icon('plus')}</button><button class="round-button" aria-label="Закрыть меню" id="drawer-close">${icon('close')}</button><button class="round-button" aria-label="Настройки списка" id="drawer-options">${icon('filter')}</button></footer></div>`;
   drawer.querySelectorAll('[data-view]').forEach(button => button.onclick = () => navigate(button.dataset.view));
   drawer.querySelectorAll('[data-project]').forEach(button => button.onclick = () => navigate('projects',button.dataset.project));
+  drawer.querySelectorAll('[data-tag]').forEach(button => button.onclick = () => navigate('tag',button.dataset.tag));
+  bindSidebarSections(drawer);
   drawer.querySelector('#drawer-close').onclick = () => drawer.close();
   drawer.querySelector('#drawer-add').onclick = () => {drawer.close(); editProject();};
   drawer.querySelector('#drawer-sync').onclick = () => {drawer.close(); openActivity();};
@@ -115,7 +147,9 @@ function openActivity() {
   openEditor(`<form><header class="editor-header"><button type="button" class="text-button" data-cancel>Закрыть</button><h2 id="editor-title">Синхронизация</h2><button type="submit" class="text-button">Обновить</button></header><div class="editor-content"><p>${escape(client.status || 'Подключаемся…')}</p><p class="hint">${client.state.pending.length ? 'Ожидают отправки: ' + client.state.pending.length : 'Очередь отправки пуста.'}</p><p class="hint">${client.state.lastSync ? 'Последнее обновление: ' + escape(new Date(client.state.lastSync).toLocaleString('ru-RU')) : 'Первое обновление ещё не выполнено.'}</p><p class="hint">Фоновые напоминания включаются в настройках на каждом устройстве.</p><p role="alert" class="error"></p></div></form>`, () => client.sync());
 }
 function openListOptions() {
-  openEditor(`<form><header class="editor-header"><button type="button" class="text-button" data-cancel>Отмена</button><h2 id="editor-title">Вид списка</h2><button type="submit" class="text-button">Готово</button></header><div class="editor-content"><label class="check-setting"><input name="completed" type="checkbox" ${showCompleted ? 'checked' : ''}>Показывать выполненные</label><p class="hint">Настройка сохраняется в аккаунте и применяется на Mac и iPhone.</p><button type="button" class="secondary" id="options-search">Найти задачу</button><button type="button" class="secondary" id="options-sync">Синхронизировать</button><p role="alert" class="error"></p></div></form>`, async form => {showCompleted = form.has('completed');await client.mutate('settings',client.account.id,{showCompleted});render();});
+  const project = view === 'projects' && projects().find(record => record.id === projectID);
+  openEditor(`<form><header class="editor-header"><button type="button" class="text-button" data-cancel>Отмена</button><h2 id="editor-title">Вид списка</h2><button type="submit" class="text-button">Готово</button></header><div class="editor-content"><label class="check-setting"><input name="completed" type="checkbox" ${showCompleted ? 'checked' : ''}>Показывать выполненные</label><p class="hint">Настройка сохраняется в аккаунте и применяется на Mac и iPhone.</p>${project ? '<button type="button" class="secondary" id="options-project">Настройки проекта</button>' : ''}<button type="button" class="secondary" id="options-search">Найти задачу</button><button type="button" class="secondary" id="options-sync">Синхронизировать</button><p role="alert" class="error"></p></div></form>`, async form => {showCompleted = form.has('completed');await client.mutate('settings',client.account.id,{showCompleted});render();});
+  if (project) editor.querySelector('#options-project').onclick = () => editProject(project);
   editor.querySelector('#options-search').onclick = () => {editor.close(); navigate('search');};
   editor.querySelector('#options-sync').onclick = () => {editor.close(); void client.sync();};
 }
@@ -129,22 +163,23 @@ function render() {
     if (editor.open) editor.close();
     return renderLogin();
   }
-  const list = client.records('task').filter(r => !r.data.deleted && (notesView() ? r.data.itemKind === 'note' : r.data.itemKind !== 'note') && !hiddenProject(r.data.projectID));
-  const titles = {today:'Сегодня', inbox:'Входящие', all:'Все задачи', search:'Поиск', calendar:'Календарь', projects:'Проекты', account:'Настройки', focus:'Помодоро',notes:'Заметки',tags:'Метки',tag:'Метка'};
+  const list = client.records('task').filter(r => !r.data.deleted && (view === 'wontDo' ? r.data.wontDoAt != null : r.data.wontDoAt == null) && (notesView() ? r.data.itemKind === 'note' : r.data.itemKind !== 'note') && (closedView() || !hiddenProject(r.data.projectID)));
+  const titles = {today:'Сегодня', inbox:'Входящие', all:'Все задачи', search:'Поиск', calendar:'Календарь', projects:'Проекты', account:'Настройки', focus:'Помодоро',analytics:'Аналитика',completed:'Завершённые',wontDo:'Не буду выполнять',notes:'Заметки',tags:'Метки',tag:'Метка'};
   const title = projectID && view === 'projects' ? projectName(projectID) : view === 'tag' ? tags().find(r=>r.id===projectID)?.data.title || 'Метка' : titles[view];
   const problem = client.state.pending.length || client.state.conflicts.length || client.authRequired || client.status.startsWith('Без связи');
-  const dock = [['all','Задачи','tasks'],['calendar','Календарь','calendar'],['notes','Заметки','projects'],['focus','Помодоро','timer'],['account','Настройки','settings']];
+  const dock = [['all','Задачи','tasks'],['calendar','Календарь','calendar'],['notes','Заметки','projects'],['focus','Помодоро','timer'],['analytics','Аналитика','analytics'],['account','Настройки','settings']];
   root.innerHTML = `<div class="shell ${view==='calendar'?'calendar-shell':''}"><aside class="native-rail"><img src="/brand.png" width="32" height="32" alt="Толк">${dock.map(([id,label,symbol])=>`<button data-view="${id}" aria-label="${label}" ${view===id?'aria-current="page"':''}>${icon(symbol)}</button>`).join('')}</aside>
-    <aside class="native-sidebar"><label class="sidebar-search">${icon('search')}<input id="sidebar-search" type="search" placeholder="Поиск задач и заметок" aria-label="Поиск задач и заметок"></label><nav aria-label="Списки">${[['all','Все','all'],['inbox','Входящие','inbox'],['today','Сегодня','today']].map(([id,label,symbol])=>`<button data-view="${id}" ${view===id?'aria-current="page"':''}>${icon(symbol)}<span>${label}</span><small>${client.records('task').filter(r=>!r.data.deleted&&!r.data.completed&&r.data.itemKind!=='note'&&(id==='inbox'?!r.data.projectID:id==='today'?r.data.date&&r.data.date<=today():true)).length}</small></button>`).join('')}</nav><div class="sidebar-heading">Проекты<button id="sidebar-add-project" aria-label="Добавить проект">${icon('plus')}</button></div><nav>${projects().map(p=>`<button data-project="${p.id}" ${projectID===p.id?'aria-current="page"':''}><i class="project-dot" data-color="${escape(p.data.color)}"></i><span>${escape(p.data.title)}</span></button>`).join('')}</nav><div class="sidebar-heading">Метки<button id="sidebar-add-tag" aria-label="Добавить метку">${icon('plus')}</button></div><nav>${tags().map(t=>`<button data-tag="${t.id}"><span class="tag-hash">#</span><span>${escape(t.data.title)}</span></button>`).join('')}</nav><footer><button data-view="account">${icon('cloud')}<span>${escape(client.account.name)}</span></button><button id="desktop-menu" aria-label="Открыть меню">${icon('more')}</button></footer></aside>
+    <aside class="native-sidebar"><label class="sidebar-search">${icon('search')}<input id="sidebar-search" type="search" placeholder="Поиск задач и заметок" aria-label="Поиск задач и заметок"></label><nav aria-label="Списки">${[['all','Все','all'],['inbox','Входящие','inbox'],['today','Сегодня','today'],['completed','Завершённые','completed'],['wontDo','Не буду выполнять','wontDo']].map(([id,label,symbol])=>`<button data-view="${id}" ${view===id?'aria-current="page"':''}>${icon(symbol)}<span>${label}</span><small>${client.records('task').filter(r=>id==='completed' ? !r.data.deleted&&r.data.itemKind!=='note'&&r.data.completed : id==='wontDo' ? !r.data.deleted&&r.data.itemKind!=='note'&&r.data.wontDoAt!=null : activeTask(r)&&(id==='inbox'?!r.data.projectID:id==='today'?r.data.date&&r.data.date<=today():true)).length}</small></button>`).join('')}</nav><div class="sidebar-heading"><button class="sidebar-disclosure" data-sidebar-toggle="projects" aria-controls="sidebar-project-list">${icon('chevron')}Проекты</button><button id="sidebar-add-project" aria-label="Добавить проект">${icon('plus')}</button></div><nav id="sidebar-project-list" data-sidebar-items="projects">${projects().map(p=>`<button data-project="${p.id}" ${projectID===p.id?'aria-current="page"':''}><i class="project-dot" data-color="${escape(p.data.color)}"></i><span>${escape(p.data.title)}</span></button>`).join('')}</nav><div class="sidebar-heading"><button class="sidebar-disclosure" data-sidebar-toggle="tags" aria-controls="sidebar-tag-list">${icon('chevron')}Метки</button><button id="sidebar-add-tag" aria-label="Добавить метку">${icon('plus')}</button></div><nav id="sidebar-tag-list" data-sidebar-items="tags">${tags().map(t=>`<button data-tag="${t.id}"><span class="tag-hash">#</span><span>${escape(t.data.title)}</span></button>`).join('')}</nav><footer><button data-view="account">${icon('cloud')}<span>${escape(client.account.name)}</span></button><button id="desktop-menu" aria-label="Открыть меню">${icon('more')}</button></footer></aside>
     <main class="workspace"><header class="page-header"><div class="toolbar"><button id="open-menu" class="round-button" aria-label="Открыть меню">${icon('menu')}</button><button id="list-options" class="round-button" aria-label="Действия со списком">${icon('more')}</button></div><h1>${escape(title)}</h1></header>
     <section ${view === 'focus' || !focusSession() ? 'hidden' : ''} class="focus-bar" aria-label="Таймер Помодоро"><button id="open-focus" aria-label="Открыть Помодоро">${icon('timer')}<span id="focus-summary">Помодоро</span></button><button id="focus-toggle" hidden></button></section>
     <div class="sync-line ${problem ? 'has-status' : ''}" role="status"><span class="sync-dot ${client.state.pending.length ? 'pending' : ''}"></span><span>${escape(client.status || 'Подключаемся…')}${client.state.pending.length ? ' · в очереди: ' + client.state.pending.length : ''}</span></div>
     ${client.authRequired ? '<button class="text-button" id="reauth">Войти снова, сохранив очередь</button>' : ''}<div id="content"></div></main>
     <nav class="navigation" aria-label="Разделы">${dock.map(([id,label,symbol]) => `<button data-view="${id}" aria-label="${label}" ${view === id || (id === 'inbox' && ['projects','all'].includes(view)) ? 'aria-current="page"' : ''}>${icon(symbol)}<span>${label}</span></button>`).join('')}</nav>
-    ${!['account','focus'].includes(view) ? `<button class="add-button" id="add" aria-label="${view === 'projects' && !projectID ? 'Новый проект' : notesView() ? 'Новая заметка' : 'Новая задача'}">${icon('plus')}<span>${view === 'projects' && !projectID ? 'Проект' : notesView() ? 'Заметка' : 'Задача'}</span></button>` : ''}</div>`;
+    ${!['account','focus','analytics'].includes(view) && !closedView() ? `<button class="add-button" id="add" aria-label="${view === 'projects' && !projectID ? 'Новый проект' : notesView() ? 'Новая заметка' : 'Новая задача'}">${icon('plus')}<span>${view === 'projects' && !projectID ? 'Проект' : notesView() ? 'Заметка' : 'Задача'}</span></button>` : ''}</div>`;
   const content = document.querySelector('#content');
   if (view === 'tags') renderTags(content);
   else if (view === 'focus') renderFocus(content);
+  else if (view === 'analytics') renderAnalytics(content);
   else if (view === 'account') renderAccount(content);
   else if (view === 'projects' && !projectID) renderProjects(content, list);
   else renderTasks(content, list);
@@ -157,9 +192,10 @@ function render() {
   root.querySelectorAll('[data-project]').forEach(b=>b.onclick=()=>navigate('projects',b.dataset.project));
   root.querySelectorAll('[data-tag]').forEach(b=>b.onclick=()=>navigate('tag',b.dataset.tag));
   root.querySelectorAll('[data-color]').forEach(el=>{if(/^[0-9a-f]{6}$/i.test(el.dataset.color))el.style.backgroundColor='#'+el.dataset.color;});
-  document.querySelector('#sidebar-add-project').onclick=editProject;
+  bindSidebarSections(root);
+  document.querySelector('#sidebar-add-project').onclick = () => editProject();
   document.querySelector('#sidebar-add-tag').onclick=editTag;
-  document.querySelector('#sidebar-search').oninput=e=>{search=e.target.value;view='search';renderTasks(document.querySelector('#content'),client.records('task').filter(r=>!r.data.deleted));};
+  document.querySelector('#sidebar-search').oninput=e=>{search=e.target.value;view='search';renderTasks(document.querySelector('#content'),client.records('task').filter(r=>!r.data.deleted&&r.data.wontDoAt==null));};
 
   document.querySelector('#list-options').onclick = openListOptions;
   document.querySelector('#reauth')?.addEventListener('click', () => {
@@ -180,12 +216,16 @@ function renderTasks(content, all) {
   const day = selectedDay || today();
   let list = all.filter(r => view === 'today' ? r.data.date && r.data.date <= today() && (!r.data.completed || r.data.date === today())
     : view === 'inbox' ? !r.data.projectID : view === 'calendar' ? r.data.date === day : view === 'projects' ? r.data.projectID === projectID : view === 'tag' ? (r.data.tagIDs || []).some(id=>tagFamily(projectID).has(id.toLowerCase())) : true);
-  if (!showCompleted) list = list.filter(r => !r.data.completed);
+  if (view === 'completed') list = list.filter(r => r.data.completed);
+  else if (!showCompleted && view !== 'wontDo') {
+    const doneSection = view === 'projects' ? projects().find(project => project.id === projectID)?.data.moveOnCompletion : null;
+    list = list.filter(r => !r.data.completed || (doneSection && r.data.section === doneSection));
+  }
   if (search) list = list.filter(r => (r.data.title + ' ' + (r.data.body || '')).toLocaleLowerCase().includes(search.toLocaleLowerCase()));
   list.sort((a, b) => Number(!!a.data.completed) - Number(!!b.data.completed) || (a.data.date || '9999').localeCompare(b.data.date || '9999') || (a.data.time || '').localeCompare(b.data.time || '') || ((a.data.order ?? 100000) - (b.data.order ?? 100000)));
   content.innerHTML = `${view === 'calendar' ? `<label class="day-picker">День<input id="calendar-day" type="date" value="${day}"></label>` : ''}
     ${view === 'search' ? `<label class="search">${icon('search')}<input id="search" type="search" placeholder="Найти задачу" aria-label="Найти задачу" value="${escape(search)}"></label>` : ''}
-    ${!['search','calendar'].includes(view)?`<form id="inline-add" class="inline-capture">${icon('plus')}<input name="title" placeholder="${notesView()?'Добавить заметку…':'Добавить задачу…  12 дек в 10'}" aria-label="Быстрое добавление" required maxlength="500"><button aria-label="Добавить" type="submit">${icon('check')}</button></form><p id="inline-recognition" class="inline-recognition" role="status" aria-live="polite" hidden></p>`:''}<div id="tasks" class="task-group">${list.length ? groupedRows(list) : `<div class="empty">${icon(search ? 'search' : view === 'calendar' ? 'calendar' : 'tasks')}<h3>${search ? 'Ничего не нашлось' : view === 'today' ? 'На сегодня всё спокойно' : 'Здесь пока нет задач'}</h3><p>${search ? 'Попробуйте другое слово.' : 'Нажмите плюс, чтобы записать первую.'}</p>${!search ? '<button class="text-button" id="empty-add">Добавить задачу</button>' : ''}</div>`}</div>`;
+    ${!['search','calendar'].includes(view)&&!closedView()?`<form id="inline-add" class="inline-capture">${icon('plus')}<input name="title" placeholder="${notesView()?'Добавить заметку…':'Добавить задачу…  12 дек в 10'}" aria-label="Быстрое добавление" required maxlength="500"><button aria-label="Добавить" type="submit">${icon('check')}</button></form><p id="inline-recognition" class="inline-recognition" role="status" aria-live="polite" hidden></p>`:''}<div id="tasks" class="task-group">${list.length ? groupedRows(list) : `<div class="empty">${icon(search ? 'search' : view === 'calendar' ? 'calendar' : 'tasks')}<h3>${search ? 'Ничего не нашлось' : view === 'today' ? 'На сегодня всё спокойно' : 'Здесь пока нет задач'}</h3><p>${search ? 'Попробуйте другое слово.' : closedView() ? 'Здесь сохраняются задачи с этим статусом.' : 'Нажмите плюс, чтобы записать первую.'}</p>${!search && !closedView() ? '<button class="text-button" id="empty-add">Добавить задачу</button>' : ''}</div>`}</div>`;
   const capture=content.querySelector('#inline-add');
   if(capture){
     let saving=false;
@@ -210,7 +250,11 @@ function renderTasks(content, all) {
   content.querySelectorAll('[data-task]').forEach(b => b.onclick = () => {const record=all.find(r=>r.id===b.dataset.task);record.kind==='event'?openEvent(record):editTask(record);});
   content.querySelectorAll('[data-complete]').forEach(b => b.onclick = guarded(async () => {
     const task = all.find(r => r.id === b.dataset.complete);
-    await client.mutate('task', task.id, {completed: !task.data.completed});
+    b.disabled = true;
+    try {
+      const patch = task.data.wontDoAt != null ? {wontDoAt:null} : {completed:!task.data.completed};
+      await client.mutate('task', task.id, patch, task);
+    } finally { b.disabled = false; }
   }));
   document.querySelector('#calendar-day')?.addEventListener('change', e => {selectedDay = e.target.value; render();});
   const field = document.querySelector('#search');
@@ -232,14 +276,48 @@ function taskDate(task) {
 function taskRow(record) {
   const task = record.data;
   const late = !task.completed && task.date && task.date < today();
-  return `<article class="task-row ${task.completed ? 'completed' : ''}"><button ${task.itemKind==='note'||record.kind==='event'?'hidden':''} class="complete priority-${task.priority || 0}" data-complete="${record.id}" aria-label="${task.completed ? 'Вернуть в работу' : 'Выполнить'}: ${escape(task.title)}" aria-pressed="${!!task.completed}">${task.completed ? icon('check') : ''}</button>
+  const wontDo = task.wontDoAt != null;
+  return `<article class="task-row ${task.completed ? 'completed' : ''} ${wontDo ? 'wont-do' : ''}"><button ${task.itemKind==='note'||record.kind==='event'?'hidden':''} class="complete priority-${task.priority || 0}" data-complete="${record.id}" aria-label="${task.completed || wontDo ? 'Вернуть в работу' : 'Выполнить'}: ${escape(task.title)}" aria-pressed="${!!task.completed}">${task.completed ? icon('check') : wontDo ? icon('returnTask') : ''}</button>
     <button class="task-body" data-task="${record.id}"><span class="task-title">${escape(task.title)}</span>${task.projectID && view !== 'projects' ? `<span class="project-label">${escape(projectName(task.projectID))}</span>` : ''}${task.priority?`<span class="priority-chip priority-${task.priority}">${icon('flag')}${['','Высокий','Средний','Низкий'][task.priority]}</span>`:''}${(task.tagIDs||[]).map(id=>tags().find(t=>t.id===id.toLowerCase())).filter(Boolean).map(t=>`<span class="tag-chip" data-tag-color="${escape(t.data.color)}">#${escape(t.data.title)}</span>`).join('')}${task.body ? `<span class="body-preview">${escape(task.body.slice(0,280).replace(/\s+/g,' '))}</span>` : ''}${task.date ? `<span class="task-date ${late ? 'overdue' : ''}">${escape(taskDate(task))}</span>` : ''}</button></article>`;
 }
 function renderProjects(content, tasks) {
   const list = projects();
-  content.innerHTML = `<div class="project-list">${list.length ? list.map(record => `<button class="project-row" data-project="${record.id}"><span class="project-icon">${icon('projects')}</span><span>${escape(record.data.title)}<small>${tasks.filter(t => t.data.projectID === record.id && !t.data.completed).length} в работе</small></span>${icon('chevron')}</button>`).join('') : '<div class="empty"><h3>Начните с одного проекта</h3><p>Для работы, дома или того, что давно хочется сделать.</p><button id="empty-project" class="text-button">Создать проект</button></div>'}</div>`;
+  content.innerHTML = `<div class="project-list">${list.length ? list.map(record => `<button class="project-row" data-project="${record.id}"><span class="project-icon">${icon('projects')}</span><span>${escape(record.data.title)}<small>${tasks.filter(t => t.data.projectID === record.id && activeTask(t)).length} в работе</small></span>${icon('chevron')}</button>`).join('') : '<div class="empty"><h3>Начните с одного проекта</h3><p>Для работы, дома или того, что давно хочется сделать.</p><button id="empty-project" class="text-button">Создать проект</button></div>'}</div>`;
   content.querySelectorAll('[data-project]').forEach(b => b.onclick = () => navigate('projects',b.dataset.project));
-  document.querySelector('#empty-project')?.addEventListener('click', editProject);
+  document.querySelector('#empty-project')?.addEventListener('click', () => editProject());
+}
+function renderAnalytics(content) {
+  const zone = settings().timeZone || 'Europe/Moscow';
+  if (analyticsTag && !tags().some(tag => tag.id === analyticsTag)) analyticsTag = '';
+  const stat = taskStatistics(client.records('task'), analyticsDays, zone, today(), analyticsTag ? tagFamily(analyticsTag) : null);
+  const max = Math.max(1, ...stat.buckets.map(day => day.completed + day.wontDo));
+  const latest = stat.buckets.at(-1);
+  content.innerHTML = `<div class="analytics-workspace">
+    <div class="analytics-filters">
+      <label>Период<select id="analytics-period">${[7,30,90].map(days=>`<option value="${days}" ${days===analyticsDays?'selected':''}>${days} дней</option>`).join('')}</select></label>
+      <label>Тег<select id="analytics-tag"><option value="">Все теги</option>${tags().map(tag=>`<option value="${tag.id}" ${tag.id===analyticsTag?'selected':''}>#${escape(tag.data.title)}</option>`).join('')}</select></label>
+    </div>
+    <dl class="analytics-metrics">${[['Создано',stat.created],['Завершено',stat.completed],['Не буду выполнять',stat.wontDo],['Сейчас в работе',stat.active]].map(([label,count])=>`<div><dt>${label}</dt><dd>${count}</dd></div>`).join('')}</dl>
+    <section class="analytics-results"><h2>Результаты по дням</h2>
+      ${stat.outcomes.length ? `<div class="analytics-chart" aria-hidden="true">${stat.buckets.map(day=>`<span title="${dateLabel(day.day)} · завершено ${day.completed} · не выполнять ${day.wontDo}"><i class="analytics-done" data-height="${day.completed/max*100}"></i><i class="analytics-skipped" data-height="${day.wontDo/max*100}"></i></span>`).join('')}</div>
+        <div class="analytics-axis" aria-hidden="true"><span>${dateLabel(stat.buckets[0].day)}</span><span>${dateLabel(latest.day)}</span></div>
+        <div class="analytics-legend"><span>Завершено</span><span>Не буду выполнять</span></div>
+        <details><summary>Данные по дням</summary><table><thead><tr><th>Дата</th><th>Завершено</th><th>Не выполнять</th></tr></thead><tbody>${stat.buckets.filter(day=>day.completed||day.wontDo).map(day=>`<tr><td>${dateLabel(day.day)}</td><td>${day.completed}</td><td>${day.wontDo}</td></tr>`).join('')}</tbody></table></details>` : '<p class="hint">За этот период нет завершённых задач или решений не выполнять.</p>'}
+      ${stat.undated ? '<p class="hint">Старые задачи без даты завершения доступны в списке «Завершённые».</p>' : ''}
+    </section>
+    ${stat.outcomes.length ? `<section class="analytics-records"><h2>Задачи за период</h2>${stat.outcomes.map(({record,date,outcome})=>`<button type="button" data-analytics-task="${record.id}">${icon(outcome)}<span>${escape(record.data.title)}</span><time>${referenceDate(date).toLocaleDateString('ru-RU',{day:'numeric',month:'short',timeZone:zone})}</time></button>`).join('')}</section>` : ''}
+    </div>`;
+  content.querySelectorAll('i[data-height]').forEach(bar => { bar.style.height = bar.dataset.height + '%'; });
+  for (const [id, change] of [['analytics-period', value => { analyticsDays = Number(value); }], ['analytics-tag', value => { analyticsTag = value; }]]) {
+    content.querySelector('#' + id).onchange = event => {
+      change(event.target.value);
+      renderAnalytics(content);
+      content.querySelector('#' + id).focus();
+    };
+  }
+  content.querySelectorAll('[data-analytics-task]').forEach(button => {
+    button.onclick = () => editTask(stat.outcomes.find(row => row.record.id === button.dataset.analyticsTask).record);
+  });
 }
 function conflictView(conflict) {
   const op = conflict.operation;
@@ -366,9 +444,26 @@ function openEditor(html, onSave) {
     finally {delete event.target.dataset.saving;button.disabled = false;}
   };
 }
-function editProject() {
-  openEditor(`<form><header class="editor-header"><button type="button" class="text-button" data-cancel>Отмена</button><h2 id="editor-title">Новый проект</h2><button type="submit" class="text-button">Создать</button></header><div class="editor-content"><label>Название<input name="title" placeholder="Например, Дом" maxlength="500" required autofocus></label><p role="alert" class="error"></p></div></form>`, async form => {
-    await client.mutate('project', crypto.randomUUID(), {title: form.get('title').trim(), color:'598BFF', deleted:false});
+function editProject(record) {
+  const project = record?.data || {};
+  const sections = project.sections?.length ? project.sections : ['Без раздела'];
+  const completeSections = sections.includes('Готово') ? sections : [...sections, 'Готово'];
+  const options = (values, current) => values.map(section => `<option value="${escape(section)}" ${section===current?'selected':''}>${escape(sections.includes(section)?section:'Создать этап «Готово»')}</option>`).join('');
+  openEditor(`<form><header class="editor-header"><button type="button" class="text-button" data-cancel>Отмена</button><h2 id="editor-title">${record?'Настройки проекта':'Новый проект'}</h2><button type="submit" class="text-button">${record?'Сохранить':'Создать'}</button></header><div class="editor-content">
+    <label>Название<input name="title" placeholder="Например, Дом" maxlength="500" value="${escape(project.title)}" required autofocus></label>
+    ${record && project.itemKind !== 'note' ? `<h3>Автоматизации</h3>
+    <label>При завершении<select name="moveOnCompletion"><option value="">Оставить на этапе</option>${options(completeSections,project.moveOnCompletion)}</select></label>
+    <label>При возврате в работу<select name="moveOnReopen"><option value="">Вернуть на прежний этап</option>${options(sections,project.moveOnReopen)}</select></label>` : ''}
+    <p role="alert" class="error"></p></div></form>`, async form => {
+    const title = form.get('title').trim();
+    if (!title) throw new Error('Введите название проекта.');
+    const patch = record ? {} : {title, color:'598BFF', deleted:false};
+    if (record && title !== project.title) patch.title = title;
+    for (const key of ['moveOnCompletion', 'moveOnReopen']) {
+      if (form.has(key) && (form.get(key) || null) !== (project[key] ?? null)) patch[key] = form.get(key) || null;
+    }
+    if (patch.moveOnCompletion === 'Готово' && !sections.includes('Готово')) patch.sections = completeSections;
+    if (Object.keys(patch).length) await client.mutate('project', record?.id || crypto.randomUUID(), patch, record);
   });
 }
 function parseCapture(text) {
@@ -432,13 +527,42 @@ function quickCapture() {
   editor.addEventListener('close',saveDraft,{once:true});update();
 }
 
+const changeLabels = {
+  completed:'Задача завершена', wontDo:'Решено не выполнять', reopened:'Возвращена в работу',
+  deleted:'Перемещена в корзину', restored:'Восстановлена из корзины', title:'Изменено название',
+  body:'Изменено описание', project:'Изменён проект', section:'Изменён этап',
+  schedule:'Изменены дата или время', priority:'Изменён приоритет', tags:'Изменены теги',
+  checklist:'Изменён чек-лист', recurrence:'Изменён повтор', reminders:'Изменены напоминания'
+};
+function taskActivityMarkup(task) {
+  const zone = settings().timeZone || 'Europe/Moscow';
+  const entries = (task.taskActivity || []).slice().reverse().map(event => ({
+    date:event.date, labels:event.changes.map(key => Object.hasOwn(changeLabels,key) ? changeLabels[key] : 'Задача изменена'),
+  }));
+  if (task.created != null) entries.push({date:task.created, labels:['Задача создана']});
+  return `<details class="editor-advanced task-activity"><summary>Активность</summary>
+    ${entries.length ? `<ol>${entries.map(({date,labels})=>`<li><time>${referenceDate(date)?.toLocaleString('ru-RU',{dateStyle:'medium',timeStyle:'short',timeZone:zone}) || ''}</time>${labels.map(label=>`<div>${label}</div>`).join('')}</li>`).join('')}</ol>` : '<p class="hint">История пока пуста.</p>'}</details>`;
+}
+function descriptionMarkup(text) {
+  return taskDescriptionParts(text).map(part => {
+    if (part.kind === 'code') return `<button type="button" class="copy-code" data-copy-code title="Скопировать"><code>${escape(part.value)}</code></button>`;
+    if (part.kind === 'telegram') return `<a href="${part.url}" target="_blank" rel="noopener noreferrer">${escape(part.value)}</a>`;
+    return escape(part.value);
+  }).join('');
+}
 function editTask(record) {
   if(!record)return quickCapture();
   let beginFocus = false;
   const data = record?.data || {date: view === 'today' ? today() : view === 'calendar' ? selectedDay || today() : '', projectID};
+  const task = data.itemKind !== 'note';
+  const preview = task && !!data.body?.trim();
   openEditor(`<form><header class="editor-header"><button type="button" class="text-button" data-cancel>Отмена</button><h2 id="editor-title">${record ? 'Задача' : 'Новая задача'}</h2><button type="submit" class="text-button">Сохранить</button></header>
     <div class="editor-content"><label class="sr-only" for="task-title">Название</label><textarea id="task-title" class="title-input" name="title" rows="2" placeholder="Что нужно сделать?" maxlength="16000" required autofocus>${escape(data.title || '')}</textarea>
-    <label>Описание<textarea name="body" rows="3" placeholder="Детали, мысли, ссылки…" maxlength="5000000">${escape(data.body || '')}</textarea></label>
+    <div class="task-description">
+      <div class="task-description-label"><label for="task-description">Описание</label><span id="description-feedback" role="status"></span>${task ? `<button type="button" class="text-button" id="description-toggle">${preview?'Редактировать':'Просмотр'}</button>` : ''}</div>
+      <textarea id="task-description" name="body" rows="3" placeholder="Детали, мысли, ссылки…" maxlength="5000000" ${preview?'hidden':''}>${escape(data.body || '')}</textarea>
+      ${task ? `<div class="description-preview" ${preview?'':'hidden'}>${descriptionMarkup(data.body || '')}</div>` : ''}
+    </div>
     <div class="date-time"><label>Дата<input type="date" name="date" value="${escape(data.date || '')}"></label><label>Время<input type="time" name="time" value="${escape(data.time || '')}"></label></div>
     <label>Проект<select name="projectID"><option value="">Входящие</option>${projects().map(p => `<option value="${p.id}" ${p.id === data.projectID ? 'selected' : ''}>${escape(p.data.title)}</option>`).join('')}</select></label>
     <label>Приоритет<select name="priority" data-priority="${data.priority||0}">${['Без приоритета','Высокий','Средний','Низкий'].map((p,i) => `<option value="${i}" ${i === (data.priority || 0) ? 'selected' : ''}>${p}</option>`).join('')}</select></label>
@@ -447,7 +571,14 @@ function editTask(record) {
     <label>Раздел<input name="section" value="${escape(data.section||'Без раздела')}" maxlength="500"></label>
     ${tags().length?`<fieldset class="tag-options"><legend>Метки</legend>${tags().map(t=>`<label><input type="checkbox" name="tags" value="${t.id}" ${(data.tagIDs||[]).some(id=>id.toLowerCase()===t.id.toLowerCase())?'checked':''}>${escape(t.data.title)}</label>`).join('')}</fieldset>`:''}
     <label>Чек-лист · по одному пункту на строке<textarea name="checklist" rows="3">${escape((data.checklist||[]).map(c=>c.title).join('\n'))}</textarea></label></div></details>
-    <p class="error" role="alert"></p>${record && !data.completed ? '<button id="task-focus" type="button" class="secondary">Сохранить и начать фокус</button>' : ''}${record ? '<button id="delete-task" type="button" class="delete-button">Удалить задачу</button>' : ''}</div></form>`, async form => {
+    ${task ? taskActivityMarkup(data) : ''}
+    <p class="error" role="alert"></p>
+    ${activeTask(record) ? '<button id="task-focus" type="button" class="secondary">Сохранить и начать фокус</button>' : ''}
+    ${task && !data.completed ? `<button id="task-wont-do" type="button" class="secondary">${data.wontDoAt != null ? 'Вернуть в работу' : 'Не буду выполнять'}</button>` : ''}
+    <button id="delete-task" type="button" class="delete-button">Удалить задачу</button></div></form>`, async form => {
+    const editorForm = editor.querySelector('form');
+    const outcome = editorForm.dataset.outcome;
+    delete editorForm.dataset.outcome;
     const patch = Object.fromEntries(form); patch.title = patch.title.trim(); patch.priority = Number(patch.priority);
     if (!patch.title) throw new Error('Введите название задачи.');
     if (patch.time && !patch.date) throw new Error('Выберите дату для задачи со временем.');
@@ -457,12 +588,42 @@ function editTask(record) {
     if (record) {
       for (const field of Object.keys(patch)) if (JSON.stringify(data[field] ?? (field === 'priority' ? 0 : '')) === JSON.stringify(patch[field])) delete patch[field];
     } else Object.assign(patch, {completed:false, deleted:false});
+    if (outcome) patch.wontDoAt = outcome === 'wontDo' ? workflowDate() : null;
     if (Object.keys(patch).length) await client.mutate('task', record?.id || crypto.randomUUID(), patch, record);
     if (beginFocus) await startFocus(client.records('task').find(r => r.id === record.id));
   });
   const recurrence=editor.querySelector('[name=recurrence]');
   recurrence.onchange=()=>{editor.querySelector('[data-repeat-interval]').hidden=recurrence.value!=='intervalDays';};
   const priority=editor.querySelector('[name=priority]');priority.onchange=()=>{priority.dataset.priority=priority.value;};
+  const description = editor.querySelector('#task-description');
+  const descriptionPreview = editor.querySelector('.description-preview');
+  const descriptionToggle = editor.querySelector('#description-toggle');
+  const descriptionFeedback = editor.querySelector('#description-feedback');
+  if (descriptionToggle) {
+    descriptionToggle.onclick = () => {
+      description.hidden = !description.hidden;
+      descriptionPreview.hidden = !description.hidden;
+      descriptionToggle.textContent = description.hidden ? 'Редактировать' : 'Просмотр';
+      descriptionFeedback.textContent = '';
+      if (description.hidden) descriptionPreview.innerHTML = descriptionMarkup(description.value) || 'Описание пусто.';
+      else description.focus();
+    };
+    descriptionPreview.onclick = async event => {
+      const button = event.target.closest('[data-copy-code]');
+      if (!button) return;
+      try {
+        await navigator.clipboard.writeText(button.textContent);
+        descriptionFeedback.textContent = 'Скопировано';
+      } catch { descriptionFeedback.textContent = 'Не удалось скопировать'; }
+    };
+  }
+  editor.querySelector('#task-wont-do')?.addEventListener('click', event => {
+    const button = event.currentTarget;
+    const form = button.form;
+    if (form.dataset.saving) return;
+    form.dataset.outcome = data.wontDoAt != null ? 'active' : 'wontDo';
+    form.requestSubmit();
+  });
   document.querySelector('#task-focus')?.addEventListener('click', () => {beginFocus = true; editor.querySelector('form').requestSubmit();});
   document.querySelector('#delete-task')?.addEventListener('click', guarded(async () => {
     await client.mutate('task', record.id, {deleted:true}, record); editor.close(); notify('Задача в корзине. Восстановить можно через меню.');
@@ -713,8 +874,8 @@ function renderCalendar(content,tasks) {
 }
 
 function groupedRows(records) {
- if(['calendar','search','tag','notes'].includes(view))return records.map(taskRow).join('');
- const groups=new Map();for(const r of records){const date=r.data.date;const label=!date?'Без даты':date<today()?'Просрочено':date===today()?'Сегодня':dateLabel(date);if(!groups.has(label))groups.set(label,[]);groups.get(label).push(r);}
+ if(['calendar','search','tag','notes','completed','wontDo'].includes(view))return records.map(taskRow).join('');
+ const groups=new Map();for(const r of records){const date=r.data.date;const label=view==='projects'?(r.data.section||'Без раздела'):!date?'Без даты':date<today()?'Просрочено':date===today()?'Сегодня':dateLabel(date);if(!groups.has(label))groups.set(label,[]);groups.get(label).push(r);}
  return Array.from(groups,([label,items])=>`<section class="list-group"><h2>${escape(label)}<small>${items.length}</small></h2>${items.map(taskRow).join('')}</section>`).join('');
 }
 function applyTagColors(){

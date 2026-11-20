@@ -131,14 +131,18 @@ public struct SnapshotEdit: Sendable {
             for key in Set(before.keys).union(after.keys) where before[key] != after[key] && current[key] == after[key] { result[key] = before[key] }
             return result
         }
-        func records<T: Codable & Identifiable & Equatable>(_ before: [T], _ after: [T], _ current: [T]) throws -> [T] where T.ID == UUID {
+        func records<T: Codable & Identifiable & Equatable>(_ before: [T], _ after: [T], _ current: [T], ignoredForRemoval: Set<String> = []) throws -> [T] where T.ID == UUID {
             let b = Dictionary(uniqueKeysWithValues: before.map { ($0.id, $0) }), a = Dictionary(uniqueKeysWithValues: after.map { ($0.id, $0) })
             var result = current
             for id in Set(b.keys).union(a.keys) where b[id] != a[id] {
                 if let index = result.firstIndex(where: { $0.id == id }) {
                     if let old = b[id], let applied = a[id] {
                         result[index] = try decoder.decode(T.self, from: encoder.encode(reverseFields(try object(old), try object(applied), try object(result[index]))))
-                    } else if b[id] == nil, result[index] == a[id] { result.remove(at: index) }
+                    } else if b[id] == nil, let applied = a[id] {
+                        let liveFields = try object(result[index]).filter { !ignoredForRemoval.contains($0.key) }
+                        let appliedFields = try object(applied).filter { !ignoredForRemoval.contains($0.key) }
+                        if liveFields == appliedFields { result.remove(at: index) }
+                    }
                 } else if a[id] == nil, let old = b[id] { result.append(old) }
             }
             if current.map(\.id) == after.map(\.id) {
@@ -148,7 +152,7 @@ public struct SnapshotEdit: Sendable {
             return result
         }
         var result = current
-        result.items = try records(before.items, after.items, current.items)
+        result.items = try records(before.items, after.items, current.items, ignoredForRemoval: ["taskActivity"])
         result.projects = try records(before.projects, after.projects, current.projects)
         result.tags = try records(before.tags, after.tags, current.tags)
         // Incoming records may now reference a tag/project created by the user action.

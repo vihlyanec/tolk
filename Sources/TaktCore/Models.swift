@@ -22,6 +22,8 @@ public struct Project: Identifiable, Codable, Equatable, Sendable {
     public var sections = ["Без раздела"]
     public var archived = false
     public var kanban = false
+    public var moveOnCompletion: String?
+    public var moveOnReopen: String?
     public init(name: String, color: String = "598BFF", kind: ItemKind = .task) {
         self.name = name; self.color = color; self.kind = kind
     }
@@ -54,6 +56,10 @@ public struct Item: Identifiable, Codable, Equatable, Sendable {
     public var schedule: Schedule = .unscheduled
     public var duration = 30
     public var completed = false
+    public var completedAt: Date?
+    public var wontDoAt: Date?
+    public var sectionBeforeCompletion: String?
+    public var taskActivity: [TaskActivity]?
     public var deleted = false
     public var created = Date()
     public var modified = Date()
@@ -79,6 +85,7 @@ public struct Item: Identifiable, Codable, Equatable, Sendable {
         self.title = title; self.kind = kind; self.projectID = projectID
     }
     public var recurrenceLabel: String { recurrence == .intervalDays ? "Через \(repeatEveryDays ?? 3) дн." : recurrence.title }
+    public var isActiveTask: Bool { kind == .task && !deleted && !completed && wontDoAt == nil }
     public var end: Date? { schedule.isTimed ? schedule.date?.addingTimeInterval(Double(duration) * 60) : nil }
 }
 public struct Preferences: Codable, Equatable, Sendable {
@@ -194,6 +201,8 @@ public enum Dates {
         result.id = UUID(); result.created = Date(); result.modified = Date()
         result.schedule = item.schedule.isTimed ? .timed(next) : .day(next)
         result.completed = false; result.stickyOpen = false; result.stickyFrame = nil
+        result.section = item.sectionBeforeCompletion ?? item.section
+        result.completedAt = nil; result.wontDoAt = nil; result.taskActivity = nil; result.sectionBeforeCompletion = nil
         result.repeatParentID = item.id
         result.checklist = result.checklist.map { CheckItem(title: $0.title) }
         return result

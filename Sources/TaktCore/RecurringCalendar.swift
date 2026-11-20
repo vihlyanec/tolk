@@ -37,7 +37,7 @@ public enum RecurringCalendar {
             guard let date = item.schedule.date else { return false }
             return date < upper && (item.end ?? calendar.date(byAdding: .day, value: 1, to: date) ?? date) > lower
         }
-        var result = items.filter { $0.kind == .task && !$0.deleted && intersects($0) }
+        var result = items.filter { $0.kind == .task && !$0.deleted && $0.wontDoAt == nil && intersects($0) }
         let roots = items.filter { item in
             item.kind == .task && item.externalRecurrence != true && item.recurrence != .none && item.recurrenceSourceID == nil &&
             (item.repeatParentID == nil || !items.contains(where: { $0.id == item.repeatParentID }))

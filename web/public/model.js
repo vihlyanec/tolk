@@ -39,6 +39,53 @@ export function canonicalPatch(kind, patch, baseline, zone='Europe/Moscow') {
   return patch;
 }
 
+export const referenceDate = value => typeof value === 'number' ? new Date((value + 978307200) * 1000) : null;
+
+export function taskDescriptionParts(text) {
+  const pattern = /(^[ \t]*(?:```|~~~)[^\n]*(?:\n[\s\S]*?^[ \t]*(?:```|~~~)[^\n]*|[\s\S]*$))|(?<!`)`([^`\r\n]+)`(?!`)|https?:\/\/[^\s<>]+|(?<![\p{L}\p{N}_.@/])@([a-zA-Z0-9_]{1,32})(?![\p{L}\p{N}_])/gmu;
+  const parts = [];
+  let start = 0;
+  for (const match of text.matchAll(pattern)) {
+    if (match.index > start) parts.push({kind: 'text', value: text.slice(start, match.index)});
+    if (match[2]) parts.push({kind: 'code', value: match[2]});
+    else if (match[3]) parts.push({kind: 'telegram', value: '@' + match[3], url: 'https://t.me/' + match[3]});
+    else parts.push({kind: 'text', value: match[0]});
+    start = match.index + match[0].length;
+  }
+  if (start < text.length) parts.push({kind: 'text', value: text.slice(start)});
+  return parts;
+}
+
+export function taskStatistics(records, days, zone, today, tagIDs) {
+  const dates = Array.from({length: days}, (_, index) => {
+    const day = new Date(today + 'T00:00:00Z');
+    day.setUTCDate(day.getUTCDate() + index + 1 - days);
+    return day.toISOString().slice(0, 10);
+  });
+  const buckets = new Map(dates.map(day => [day, {day, completed: 0, wontDo: 0}]));
+  const bucket = value => typeof value === 'number' ? buckets.get(dayAndTime(value + 978307200, zone).date) : undefined;
+  const result = {buckets: [...buckets.values()], created: 0, active: 0, completed: 0, wontDo: 0, undated: false, outcomes: []};
+  for (const record of records) {
+    const data = record.data;
+    if (data.deleted || data.itemKind === 'note' || (tagIDs && !data.tagIDs?.some(id => tagIDs.has(id.toLowerCase())))) continue;
+    if (bucket(data.created)) result.created++;
+    if (data.completed || data.wontDoAt != null) {
+      const outcome = data.completed ? 'completed' : 'wontDo';
+      const date = data.completed ? data.completedAt : data.wontDoAt;
+      const day = bucket(date);
+      if (date == null && data.completed) result.undated = true;
+      if (!day) continue;
+      day[outcome]++;
+      result[outcome]++;
+      result.outcomes.push({record, date, outcome});
+    } else {
+      result.active++;
+    }
+  }
+  result.outcomes.sort((a, b) => b.date - a.date);
+  return result;
+}
+
 // Each group shares columns until all its intervals end; touching edges start a new group.
 function overlapGroups(slots) {
   const groups = [];

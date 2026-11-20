@@ -1,5 +1,28 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {calendarDayLayout,calendarWeekLayout,scheduleFromWall,projectRecord} from '../public/model.js';
+import {calendarDayLayout,calendarWeekLayout,scheduleFromWall,projectRecord,taskDescriptionParts,taskStatistics} from '../public/model.js';
+
+test('description code keeps exact text and Telegram links ignore emails and fenced blocks',()=>{
+ const source='Код `  Я+ & 100% 💡  `, @vihlyanec, a@sample.test, https://example.com/@path\n```\n@blocked `example`\n```';
+ const parts=taskDescriptionParts(source).filter(part=>part.kind!=='text');
+ assert.deepEqual(parts,[{kind:'code',value:'  Я+ & 100% 💡  '},{kind:'telegram',value:'@vihlyanec',url:'https://t.me/vihlyanec'}]);
+});
+
+test('analytics separates outcomes and uses the selected tag and account day',()=>{
+ const at=iso=>Date.parse(iso)/1000-978307200;
+ const records=[
+  {data:{tagIDs:['PROJECT'],created:at('2026-11-19T22:10Z'),completed:true,completedAt:at('2026-11-19T22:15Z')}},
+  {data:{tagIDs:['project'],wontDoAt:at('2026-11-18T21:10Z')}},
+  {data:{tagIDs:['project'],completed:true}},
+  {data:{tagIDs:['project']}},
+  {data:{tagIDs:['other'],completed:true,completedAt:at('2026-11-19T22:15Z')}},
+  {data:{tagIDs:['project'],itemKind:'note'}},
+  {data:{tagIDs:['project'],deleted:true}},
+ ];
+ const stats=taskStatistics(records,7,'Europe/Moscow','2026-11-20',new Set(['project']));
+ assert.deepEqual([stats.created,stats.completed,stats.wontDo,stats.active,stats.undated],[1,1,1,1,true]);
+ assert.equal(stats.buckets.at(-1).completed,1);
+ assert.equal(stats.buckets.at(-2).wontDo,1);
+});
 test('absolute instants and civil days preserve meaning across time zones',()=>{
  const schedule=scheduleFromWall('2026-12-12','10:00','Europe/Moscow');
  assert.equal(schedule.kind,'timed');
