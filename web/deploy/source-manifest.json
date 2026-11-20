@@ -1,28 +1,28 @@
 {
   "date": "2026-11-20",
   "url": "https://tolk.103-102-229-153.sslip.io",
-  "native_source_commit": "09fe36e406931f42d6a63c7fc0840e74c872dbc3",
-  "native_release_state": "1.1.10/build48 published Latest 2026-11-20T07:07:51Z, release 452368272. CI 44691273319 passed on the tagged commit.",
+  "native_source_commit": "2367183cb3bb57a9191ae62d96bd9979e5536915",
+  "native_release_state": "1.1.11/build49 published Latest 2026-11-20T08:14:20Z, release 452414114. CI passed on the tagged commit.",
   "tests": {
-    "swift": 198,
+    "swift": 200,
     "python": 48,
     "javascript": 34,
     "release_scripts": 14
   },
-  "verification": "Публичный сайт отдаёт предыдущую версию. Прямой вход на VPS вернул отказ publickey/password, открытого SSH-сеанса владельца нет. Пакет веба проверен локально. Mac сохраняет совместимость с прежним сервером и передаёт новые поля после согласования поддержки протокола.",
+  "verification": "Веб-пакет проверен локально. Публичный сайт ожидает выкладки. Прямой вход на VPS вернул отказ publickey/password, открытого SSH-сеанса владельца нет.",
   "sha256": {
-    "public/app.js": "eadf03cc70fa6c033c5f7bbc20a47c895c19e41e66926faa894511cfa85aa0e8",
+    "public/app.js": "2325ac64c4287fec91add520f6b2ea2ab3e1714143c6200089b3fbc76fca3d5c",
     "public/brand.png": "4563e1902c5bc33d54eff8ad59af6c241a305ef8c5c9e142a4a035bde2057ba2",
     "public/icon-192.png": "04f185ca414f5ef27cbecfa457af82463b3e24307be9087322f68768e6877733",
     "public/icon-512.png": "ea08ff30b8f4dabafd4d65667978018eba0bdc16002554edafa39c6e1ae10e51",
     "public/icon.svg": "0b67971f3f73131204149fa417fb739e436c95d6164765912fc73a591e3c4263",
-    "public/index.html": "2b00ad6059548555e4da620d5acd2f60c794ed242d18d02ca048850869a0d785",
+    "public/index.html": "f9bf1be9fc58d8e0a3fbc108693f0bb6412b96fc135b6d5af2595a872616d716",
     "public/manifest.webmanifest": "1b469f06bc6b14647987ff8a93100fe8463580fea29212e83928104a8f87c7e4",
     "public/model.js": "ba141f180904a668953878d47bc50f9b67561d0e8ee4a6e1f339e537f4028965",
     "public/pomodoro.js": "6f533ba35cddc7413d10c31cd79d5c2271538a4da862d2ff3262244ebca8b7cf",
     "public/smart.js": "e6372fd7d8d1f9309e28c7644877bf7fa973480757124643fccc7118e1525ea1",
-    "public/style.css": "960d296275842063cbe4769c83332ecae0b6b2f792f95003c790a6492bf1683b",
-    "public/sw.js": "96cb70cea4c303859a69f282dfba27a4ac100a4ac694b1eae20e092935c02a90",
+    "public/style.css": "4431b5145f24fa5ba403e08424c9754419f6972f0a06b787a18bf954b6fbd7c4",
+    "public/sw.js": "9821f5615d3d2f70cec2080db21e3bc853b0e7794f42d3b0ad8239f3d1a8f6c3",
     "public/sync.js": "455dcfbb6f66e091d9fcd263ed12be2c447f01aa46a2df581006258c5c54acbc",
     "public/tolk-add-task.shortcut": "3090f97d042915b2b95399060c27e18863c1080a0242175b8434a8433c517ff1",
     "server/backup.py": "470e71b0ceffd9fe43fd0b823a6c5249da872a176a4c19eeb5d79656f782d4b9",
@@ -122,31 +122,31 @@
     "credentials_read": false
   },
   "native_release_verification": {
-    "version": "1.1.10",
-    "build": 48,
-    "commit": "09fe36e406931f42d6a63c7fc0840e74c872dbc3",
-    "release_url": "https://github.com/vihlyanec/tolk/releases/tag/v1.1.10",
-    "ci_url": "https://github.com/vihlyanec/tolk/actions/runs/44691273319",
+    "version": "1.1.11",
+    "build": 49,
+    "commit": "2367183cb3bb57a9191ae62d96bd9979e5536915",
+    "release_url": "https://github.com/vihlyanec/tolk/releases/tag/v1.1.11",
+    "ci_url": "https://github.com/vihlyanec/tolk/actions/runs/44699043571",
     "public_downloads": {
-      "Tolk-1.1.10.md": {
-        "sha256": "ffc948b3827437a9183852ac10a74ad29d1fe8281bda18078a2ad50ddce56ef9",
-        "bytes": 1893
+      "Tolk-1.1.11.md": {
+        "sha256": "5a1a784f2b019a1ba0821f4cedf070b2e5af1dc81bb04489ba2e598d77dae74c",
+        "bytes": 954
       },
-      "Tolk-1.1.10.zip": {
-        "sha256": "34e147b5f8a65508a5a6d71afd88d0e4971d793a09b675a65bd5341e29f931c1",
-        "bytes": 9062530
+      "Tolk-1.1.11.zip": {
+        "sha256": "0c8454a0f99f64657b7eaba4a0a0d5ebeccb20319422cd9c57b80caddcfbcc3a",
+        "bytes": 9097489
       },
       "appcast.xml": {
-        "sha256": "cf276fe6c1f2bc94eb4ea754aaef6ba43a03611472858f07bebc2f90d6727b08",
-        "bytes": 1456
+        "sha256": "8a3785c7460dca7dae76f3dca3c1fa2a6e32dfa548007c21447297e9d8815f69",
+        "bytes": 1455
       },
       "checksums.txt": {
-        "sha256": "3db6950b37932102b5039e285042dc12ee0270414209262f560b2bd4b3dfe859",
+        "sha256": "094abe4e4832d895ecedf989205889b75eaa22d6d7b1a0f78874480d0b3595d4",
         "bytes": 241
       },
       "latest-appcast.xml": {
-        "sha256": "cf276fe6c1f2bc94eb4ea754aaef6ba43a03611472858f07bebc2f90d6727b08",
-        "bytes": 1456
+        "sha256": "8a3785c7460dca7dae76f3dca3c1fa2a6e32dfa548007c21447297e9d8815f69",
+        "bytes": 1455
       }
     }
   },
@@ -186,5 +186,43 @@
       }
     },
     "compatibility": "Mac negotiates support before sending the new fields."
+  },
+  "native_release_verification_1110": {
+    "version": "1.1.10",
+    "build": 48,
+    "commit": "09fe36e406931f42d6a63c7fc0840e74c872dbc3",
+    "release_url": "https://github.com/vihlyanec/tolk/releases/tag/v1.1.10",
+    "ci_url": "https://github.com/vihlyanec/tolk/actions/runs/44691273319",
+    "public_downloads": {
+      "Tolk-1.1.10.md": {
+        "sha256": "ffc948b3827437a9183852ac10a74ad29d1fe8281bda18078a2ad50ddce56ef9",
+        "bytes": 1893
+      },
+      "Tolk-1.1.10.zip": {
+        "sha256": "34e147b5f8a65508a5a6d71afd88d0e4971d793a09b675a65bd5341e29f931c1",
+        "bytes": 9062530
+      },
+      "appcast.xml": {
+        "sha256": "cf276fe6c1f2bc94eb4ea754aaef6ba43a03611472858f07bebc2f90d6727b08",
+        "bytes": 1456
+      },
+      "checksums.txt": {
+        "sha256": "3db6950b37932102b5039e285042dc12ee0270414209262f560b2bd4b3dfe859",
+        "bytes": 241
+      },
+      "latest-appcast.xml": {
+        "sha256": "cf276fe6c1f2bc94eb4ea754aaef6ba43a03611472858f07bebc2f90d6727b08",
+        "bytes": 1456
+      }
+    }
+  },
+  "stage_order_1111": {
+    "production_web_state": "awaiting owner SSH session",
+    "files": {
+      "public/index.html": "f9bf1be9fc58d8e0a3fbc108693f0bb6412b96fc135b6d5af2595a872616d716",
+      "public/app.js": "2325ac64c4287fec91add520f6b2ea2ab3e1714143c6200089b3fbc76fca3d5c",
+      "public/style.css": "4431b5145f24fa5ba403e08424c9754419f6972f0a06b787a18bf954b6fbd7c4",
+      "public/sw.js": "9821f5615d3d2f70cec2080db21e3bc853b0e7794f42d3b0ad8239f3d1a8f6c3"
+    }
   }
 }
