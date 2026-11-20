@@ -275,7 +275,7 @@ function taskDate(task) {
 }
 function taskRow(record) {
   const task = record.data;
-  const late = !task.completed && task.date && task.date < today();
+  const late = !task.completed && task.wontDoAt == null && task.date && task.date < today();
   const wontDo = task.wontDoAt != null;
   return `<article class="task-row ${task.completed ? 'completed' : ''} ${wontDo ? 'wont-do' : ''}"><button ${task.itemKind==='note'||record.kind==='event'?'hidden':''} class="complete priority-${task.priority || 0}" data-complete="${record.id}" aria-label="${task.completed || wontDo ? 'Вернуть в работу' : 'Выполнить'}: ${escape(task.title)}" aria-pressed="${!!task.completed}">${task.completed ? icon('check') : wontDo ? icon('returnTask') : ''}</button>
     <button class="task-body" data-task="${record.id}"><span class="task-title">${escape(task.title)}</span>${task.projectID && view !== 'projects' ? `<span class="project-label">${escape(projectName(task.projectID))}</span>` : ''}${task.priority?`<span class="priority-chip priority-${task.priority}">${icon('flag')}${['','Высокий','Средний','Низкий'][task.priority]}</span>`:''}${(task.tagIDs||[]).map(id=>tags().find(t=>t.id===id.toLowerCase())).filter(Boolean).map(t=>`<span class="tag-chip" data-tag-color="${escape(t.data.color)}">#${escape(t.data.title)}</span>`).join('')}${task.body ? `<span class="body-preview">${escape(task.body.slice(0,280).replace(/\s+/g,' '))}</span>` : ''}${task.date ? `<span class="task-date ${late ? 'overdue' : ''}">${escape(taskDate(task))}</span>` : ''}</button></article>`;
@@ -305,7 +305,11 @@ function renderAnalytics(content) {
         <details><summary>Данные по дням</summary><table><thead><tr><th>Дата</th><th>Завершено</th><th>Не выполнять</th></tr></thead><tbody>${stat.buckets.filter(day=>day.completed||day.wontDo).map(day=>`<tr><td>${dateLabel(day.day)}</td><td>${day.completed}</td><td>${day.wontDo}</td></tr>`).join('')}</tbody></table></details>` : '<p class="hint">За этот период нет завершённых задач или решений не выполнять.</p>'}
       ${stat.undated ? '<p class="hint">Старые задачи без даты завершения доступны в списке «Завершённые».</p>' : ''}
     </section>
-    ${stat.outcomes.length ? `<section class="analytics-records"><h2>Задачи за период</h2>${stat.outcomes.map(({record,date,outcome})=>`<button type="button" data-analytics-task="${record.id}">${icon(outcome)}<span>${escape(record.data.title)}</span><time>${referenceDate(date).toLocaleDateString('ru-RU',{day:'numeric',month:'short',timeZone:zone})}</time></button>`).join('')}</section>` : ''}
+    ${stat.outcomes.length ? `<section class="analytics-records"><h2>Задачи за период</h2>${stat.outcomes.map(({record,date,outcome})=>{
+      const day = referenceDate(date).toLocaleDateString('ru-RU',{day:'numeric',month:'short',timeZone:zone});
+      const status = outcome === 'completed' ? 'Завершено' : 'Не буду выполнять';
+      return `<button type="button" data-analytics-task="${record.id}" aria-label="${escape(record.data.title + ', ' + status + ', ' + day)}">${icon(outcome)}<span>${escape(record.data.title)}</span><time>${day}</time></button>`;
+    }).join('')}</section>` : ''}
     </div>`;
   content.querySelectorAll('i[data-height]').forEach(bar => { bar.style.height = bar.dataset.height + '%'; });
   for (const [id, change] of [['analytics-period', value => { analyticsDays = Number(value); }], ['analytics-tag', value => { analyticsTag = value; }]]) {

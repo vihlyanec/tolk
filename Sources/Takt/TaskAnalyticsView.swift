@@ -91,6 +91,8 @@ struct TaskAnalyticsView: View {
                                     if let date = item.completedAt ?? item.wontDoAt { Text(date, format: .dateTime.day().month()).foregroundStyle(.secondary) }
                                 }.padding(.vertical, 10).contentShape(Rectangle())
                             }.buttonStyle(.plain)
+                                .accessibilityLabel(item.title + ", " + (item.completed ? "Завершено" : "Не буду выполнять"))
+                                .accessibilityValue((item.completedAt ?? item.wontDoAt)?.formatted(.dateTime.day().month()) ?? "")
                             Divider()
                         }
                     }
