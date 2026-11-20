@@ -1,142 +1,40 @@
 {
-  "date": "2026-11-18",
+  "date": "2026-11-20",
   "url": "https://tolk.103-102-229-153.sslip.io",
-  "native_source_commit": "d67f18a621003c4666a2f63f348621e122a008a5",
-  "native_release_state": "1.1.9/build47 published Latest 2026-11-18T19:54:16Z, release 450471947. CI 44382379777 passed on the tagged commit.",
+  "native_source_commit": "09fe36e406931f42d6a63c7fc0840e74c872dbc3",
+  "native_release_state": "1.1.10/build48 published Latest 2026-11-20T07:07:51Z, release 452368272. CI 44691273319 passed on the tagged commit.",
   "tests": {
-    "swift": 194,
-    "python": 45,
-    "javascript": 32,
+    "swift": 198,
+    "python": 48,
+    "javascript": 34,
     "release_scripts": 14
   },
-  "verification": "The 1.1.9 Mac release is published. Web production still serves the previous versions of the five calendar assets, verified over HTTPS. Updating the web bundle requires a new SSH session.",
+  "verification": "Публичный сайт отдаёт предыдущую версию. Прямой вход на VPS вернул отказ publickey/password, открытого SSH-сеанса владельца нет. Пакет веба проверен локально. Mac сохраняет совместимость с прежним сервером и передаёт новые поля после согласования поддержки протокола.",
   "sha256": {
-    "public/index.html": "c67f6fbfd844654aa752f3a2072f130c1cac42d0141444b499744aca5354ff29",
-    "public/smart.js": "e6372fd7d8d1f9309e28c7644877bf7fa973480757124643fccc7118e1525ea1",
-    "public/icon-192.png": "04f185ca414f5ef27cbecfa457af82463b3e24307be9087322f68768e6877733",
-    "public/sync.js": "455dcfbb6f66e091d9fcd263ed12be2c447f01aa46a2df581006258c5c54acbc",
-    "public/icon.svg": "0b67971f3f73131204149fa417fb739e436c95d6164765912fc73a591e3c4263",
-    "public/style.css": "202732f6d2a35c8efb45faf03de81de504c7378f65e386ea7fc96d63cffe4864",
-    "public/manifest.webmanifest": "1b469f06bc6b14647987ff8a93100fe8463580fea29212e83928104a8f87c7e4",
-    "public/model.js": "4ef5cc7994c9addefe77fb5ff44c1c13c5d4f2f6f959e3c3052104d51b37f465",
-    "public/pomodoro.js": "6f533ba35cddc7413d10c31cd79d5c2271538a4da862d2ff3262244ebca8b7cf",
-    "public/app.js": "0196dfae41caeab3a36ecfbbd247899ecfe56e9611ff7600c91a3fac3d555237",
-    "public/sw.js": "1d9d108890166196d440931ac2cc753ec9155d4a560920783f9f6d1541c76d50",
+    "public/app.js": "eadf03cc70fa6c033c5f7bbc20a47c895c19e41e66926faa894511cfa85aa0e8",
     "public/brand.png": "4563e1902c5bc33d54eff8ad59af6c241a305ef8c5c9e142a4a035bde2057ba2",
+    "public/icon-192.png": "04f185ca414f5ef27cbecfa457af82463b3e24307be9087322f68768e6877733",
     "public/icon-512.png": "ea08ff30b8f4dabafd4d65667978018eba0bdc16002554edafa39c6e1ae10e51",
-    "server/store.py": "184cefbc3418ac58020752f0b6af682f2f7091bd2a44151b836afa06604561d9",
+    "public/icon.svg": "0b67971f3f73131204149fa417fb739e436c95d6164765912fc73a591e3c4263",
+    "public/index.html": "2b00ad6059548555e4da620d5acd2f60c794ed242d18d02ca048850869a0d785",
+    "public/manifest.webmanifest": "1b469f06bc6b14647987ff8a93100fe8463580fea29212e83928104a8f87c7e4",
+    "public/model.js": "ba141f180904a668953878d47bc50f9b67561d0e8ee4a6e1f339e537f4028965",
+    "public/pomodoro.js": "6f533ba35cddc7413d10c31cd79d5c2271538a4da862d2ff3262244ebca8b7cf",
+    "public/smart.js": "e6372fd7d8d1f9309e28c7644877bf7fa973480757124643fccc7118e1525ea1",
+    "public/style.css": "960d296275842063cbe4769c83332ecae0b6b2f792f95003c790a6492bf1683b",
+    "public/sw.js": "96cb70cea4c303859a69f282dfba27a4ac100a4ac694b1eae20e092935c02a90",
+    "public/sync.js": "455dcfbb6f66e091d9fcd263ed12be2c447f01aa46a2df581006258c5c54acbc",
+    "public/tolk-add-task.shortcut": "3090f97d042915b2b95399060c27e18863c1080a0242175b8434a8433c517ff1",
     "server/backup.py": "470e71b0ceffd9fe43fd0b823a6c5249da872a176a4c19eeb5d79656f782d4b9",
+    "server/capture.py": "f4958aa5d9eed860884116513a9994e10e3cfd796c920c7ba20b6f1afa0a7ea6",
     "server/main.py": "042c342a145c717653c4cc58f8306c7020bea85238c9e11d82cf4b663a8cefb1",
-    "server/schema.py": "1bb828876fbce90e7c870381b10d1bf587a92eba7b71d8fe5238fa8a90f4c978",
+    "server/push.py": "9b178c8b9d9e79d163a52ad431d6e892e97262e81b446f5ce138c9d1c2c7848b",
+    "server/schema.py": "0ce1ba60788550ae8a03cb2c0bfd0c6c216699116219642ad431b8ea68ceae4d",
+    "server/store.py": "11ad4eea68cf118674267c4c04300d36f4b767740b67f236f5c57cfec6c22092",
+    "server/task_activity.py": "a62211b888ce2aab45819f4e54845811123e268642df40516b82d90947361bdc",
     "server/wsgi.py": "0fd34a4fdf44907ddbf1a4487e75c5abbdab41102a37feb1fcbcfd99e1134e0b",
-    "server/push.py": "4ead7bc320ee60560ce77451d2dd6933eb972ff949c811f2b901e2f6195c3a38",
     "Dockerfile": "e18ed6a7e5a397af9a03bba861124bf44ad3db9580e9f438f01569a2e8184199",
     "compose.yaml": "dab18e31018528dff2777cec5132a7bffe9d4d262f8d1efad8db199d6ac08d06",
-    ".dockerignore": "6d474fa6b34270912c6835a2447de7063017ffd9df95b941b864449e2c2a1e01",
-    "server/capture.py": "f4958aa5d9eed860884116513a9994e10e3cfd796c920c7ba20b6f1afa0a7ea6",
-    "public/tolk-add-task.shortcut": "3090f97d042915b2b95399060c27e18863c1080a0242175b8434a8433c517ff1"
-  },
-  "sync_repair_commit": "9a7340bd538408f0f874a1fc3fcfb735564dfa10",
-  "source_backup": "/opt/tolk-web-before-115-20261111.tgz",
-  "database_backup": "20261111T194512053649Z.sqlite",
-  "deployment_receipt": "/opt/tolk-web-deploy-115-receipt.json",
-  "capture_repair": {
-    "date": "2026-11-11",
-    "verification": "42Python tests passed; auth-first401verified production; public shortcut HTTPS SHA256 match; real macOS Shortcuts synthetic success/error branches tested; physicaliPhonepending",
-    "database_backup": "20261111T201718270164Z.sqlite",
-    "source_backup": "/opt/tolk-capture-auth-before-20261111-v2"
-  },
-  "capture_key_display": {
-    "date": "2026-11-11",
-    "database_backup": "20261111T204241485592Z.sqlite",
-    "source_backup": "/opt/tolk-key-display-before-20261111",
-    "receipt": "/opt/tolk-key-display-20261111-receipt.json",
-    "verification": "44Python+25JS pass; synthetic browser lost-response retry2requests/1key; background rerender during issuance preserves dialog/key; desktop1280dark/mobile390light; physicaliPhone not tested",
-    "app_version": "20261111-key-display",
-    "service_worker": "v9"
-  },
-  "project_section_paths": {
-    "source_commit": "235bd123e5d1153b346979535959c9248cbbc4e9",
-    "receipt": "/opt/tolk-project-path-118-20261117T142639857639Z-receipt.json",
-    "database_backup": {
-      "path": "/opt/tolk-web/data/backups/20261117T142639857639Z-before-project-path-118.sqlite",
-      "bytes": 9342976,
-      "quick_check": "ok"
-    },
-    "source_backup": "/opt/tolk-project-path-before-118-20261117T142639857639Z",
-    "installed_sha256": {
-      "public/smart.js": "e6372fd7d8d1f9309e28c7644877bf7fa973480757124643fccc7118e1525ea1",
-      "public/app.js": "0196dfae41caeab3a36ecfbbd247899ecfe56e9611ff7600c91a3fac3d555237",
-      "public/sw.js": "1d9d108890166196d440931ac2cc753ec9155d4a560920783f9f6d1541c76d50",
-      "public/index.html": "c67f6fbfd844654aa752f3a2072f130c1cac42d0141444b499744aca5354ff29"
-    },
-    "served_sha256": {
-      "public/smart.js": "e6372fd7d8d1f9309e28c7644877bf7fa973480757124643fccc7118e1525ea1",
-      "public/app.js": "0196dfae41caeab3a36ecfbbd247899ecfe56e9611ff7600c91a3fac3d555237",
-      "public/sw.js": "1d9d108890166196d440931ac2cc753ec9155d4a560920783f9f6d1541c76d50",
-      "public/index.html": "c67f6fbfd844654aa752f3a2072f130c1cac42d0141444b499744aca5354ff29"
-    },
-    "https": {
-      "source_commit": "235bd123e5d1153b346979535959c9248cbbc4e9",
-      "public": {
-        "smart.js": {
-          "sha256": "e6372fd7d8d1f9309e28c7644877bf7fa973480757124643fccc7118e1525ea1",
-          "bytes": 6522,
-          "status": 200
-        },
-        "app.js": {
-          "sha256": "0196dfae41caeab3a36ecfbbd247899ecfe56e9611ff7600c91a3fac3d555237",
-          "bytes": 84564,
-          "status": 200
-        },
-        "index.html": {
-          "sha256": "c67f6fbfd844654aa752f3a2072f130c1cac42d0141444b499744aca5354ff29",
-          "bytes": 1841,
-          "status": 200
-        },
-        "sw.js": {
-          "sha256": "1d9d108890166196d440931ac2cc753ec9155d4a560920783f9f6d1541c76d50",
-          "bytes": 2136,
-          "status": 200
-        },
-        "app.js?v=20261117-project-path": {
-          "sha256": "0196dfae41caeab3a36ecfbbd247899ecfe56e9611ff7600c91a3fac3d555237",
-          "bytes": 84564,
-          "status": 200
-        },
-        "smart.js?v=20261117-project-path": {
-          "sha256": "e6372fd7d8d1f9309e28c7644877bf7fa973480757124643fccc7118e1525ea1",
-          "bytes": 6522,
-          "status": 200
-        }
-      },
-      "session": 200,
-      "/api/capture": 401,
-      "/api/capture/options": 401,
-      "/api/capture cross-origin": 403
-    },
-    "restarts": [],
-    "personal_record_writes": false,
-    "database_migrations": false,
-    "credentials_read": false
-  },
-  "native_release_verification": {
-    "url": "https://github.com/vihlyanec/tolk/releases/tag/v1.1.8",
-    "release_id": 448743867,
-    "published_at": "2026-11-17T14:58:28Z",
-    "source_commit": "e01695cd61bd2a91fd7e07e210e9d899860af54b",
-    "ci_run": 44106021664,
-    "public_asset_sha256": {
-      "Tolk-1.1.8.md": "d73240ce19cfa4c27aa5857246b7d252aae4898a924d3e36afceb201a8449ae4",
-      "Tolk-1.1.8.zip": "c066e992adf33835ba26610f95e0895eb5833a4a034e5b097a01e84c804d99d2",
-      "appcast.xml": "2264333d33a31563e12c670e03f7185646469762c2af363d2ba2ec2f776f5729",
-      "checksums.txt": "a2707623cd284ebd88cf907a88c4780dcf4fa3cfc5c62d77c6220c1095d72353"
-    },
-    "latest_appcast_matches": true
-  },
-  "calendar_background_119": {
-    "status": "pending_ssh_session",
-    "source_commit": "d67f18a621003c4666a2f63f348621e122a008a5",
-    "baseline_verified_over_https": true
+    ".dockerignore": "6d474fa6b34270912c6835a2447de7063017ffd9df95b941b864449e2c2a1e01"
   }
 }
