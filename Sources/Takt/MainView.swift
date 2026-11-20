@@ -266,7 +266,7 @@ struct TaskListView: View {
             }
         }
     }
-    private var kanban: some View {
+    @ViewBuilder private var kanban: some View {
         if let project = state.project {
             let prefix = "takt-section:" + project.id.uuidString + ":"
             ScrollView(.horizontal) {
