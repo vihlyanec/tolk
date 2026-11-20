@@ -197,10 +197,12 @@ struct TaskListView: View {
                             Text("Список").tag(false); Text("Канбан").tag(true)
                         }.pickerStyle(.segmented).labelsHidden().frame(width: 160)
                     }
-                    Button {
-                        if state.area == .notes { state.showSticky(nil) }
-                        else { state.taskCreationPresented = true }
-                    } label: { Label(state.area == .notes ? "Заметка" : "Задача", systemImage: "plus") }.buttonStyle(.borderedProminent)
+                    if state.scope != .wontDo {
+                        Button {
+                            if state.area == .notes { state.showSticky(nil) }
+                            else { state.taskCreationPresented = true }
+                        } label: { Label(state.area == .notes ? "Заметка" : "Задача", systemImage: "plus") }.buttonStyle(.borderedProminent)
+                    }
                     if let id = state.selectedID, state.selected?.deleted == false { IconButton(symbol: "trash", help: "Удалить выбранную задачу") { state.delete(id) } }
                     IconButton(symbol: "sidebar.right", help: "Показать/скрыть детали") { state.inspectorVisible.toggle() }
                 }.padding(22)

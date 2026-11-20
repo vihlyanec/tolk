@@ -266,6 +266,11 @@ class Store:
                         destination_project = json.loads(linked[0])
                         if destination_project.get('archived'):
                             destination_project = {}
+                    if patch.get('wontDoAt') is not None and merged.get('completed') and patch.get('completed') is not True:
+                        # A conflict resolved against the latest revision can replace the other outcome.
+                        merged['completed'] = False
+                        merged['completedAt'] = None
+                        patch = patch | {'completed': False, 'completedAt': None}
                 if kind == "settings" and merged.get("startHour", 7) >= merged.get("endHour", 23):
                     raise Invalid("Конец дня должен быть позже начала")
                 if kind == 'task':

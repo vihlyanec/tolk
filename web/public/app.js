@@ -114,7 +114,7 @@ function openMenu() {
     ['today','Сегодня','calendar',active.filter(r => r.data.date && r.data.date <= today()).length],
     ['inbox','Входящие','inbox',active.filter(r => !r.data.projectID).length],
     ['all','Все задачи','all',active.length],
-    ['projects','Проекты','projects',projects().length],
+    ['projects','Все проекты','projects',projects().length],
     ['notes','Заметки','projects',client.records('task').filter(r=>!r.data.deleted&&r.data.itemKind==='note').length],
     ['completed','Завершённые','completed',client.records('task').filter(r=>!r.data.deleted&&r.data.completed&&r.data.itemKind!=='note').length],
     ['wontDo','Не буду выполнять','wontDo',client.records('task').filter(r=>!r.data.deleted&&r.data.wontDoAt!=null&&r.data.itemKind!=='note').length],
@@ -586,7 +586,10 @@ function editTask(record) {
     if(patch.customReminder!=='keep'){patch.timedReminderOffsets=patch.customReminder==='default'?null:patch.customReminder==='none'?[]:[Number(patch.customReminder)];if(patch.customReminder==='default')patch.reminderMinutes=null;}delete patch.customReminder;
     patch.duration=Number(form.get('duration'));patch.itemKind=data.itemKind || (notesView()?'note':'task');patch.tagIDs=form.getAll('tags');delete patch.tags;patch.checklist=(form.get('checklist')||'').split('\n').filter(t=>t.trim()).map((t,i)=>({...data.checklist?.[i],id:data.checklist?.[i]?.id || crypto.randomUUID(),title:t.trim(),done:data.checklist?.[i]?.done||false}));
     if (record) {
-      for (const field of Object.keys(patch)) if (JSON.stringify(data[field] ?? (field === 'priority' ? 0 : '')) === JSON.stringify(patch[field])) delete patch[field];
+      const defaults = {body:'',date:'',time:'',projectID:'',priority:0,duration:30,recurrence:'none',section:'Без раздела',itemKind:'task',tagIDs:[],checklist:[]};
+      for (const field of Object.keys(patch)) {
+        if (JSON.stringify(data[field] ?? defaults[field] ?? null) === JSON.stringify(patch[field])) delete patch[field];
+      }
     } else Object.assign(patch, {completed:false, deleted:false});
     if (outcome) patch.wontDoAt = outcome === 'wontDo' ? workflowDate() : null;
     if (Object.keys(patch).length) await client.mutate('task', record?.id || crypto.randomUUID(), patch, record);

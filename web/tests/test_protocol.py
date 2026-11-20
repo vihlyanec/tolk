@@ -90,6 +90,13 @@ class ProtocolTests(unittest.TestCase):
         active = self.send(operation(task, 4, {'wontDoAt': None}))['results'][0]['record']['data']
         self.assertIsNone(active['wontDoAt'])
         self.assertEqual(active['taskActivity'][-1]['changes'], ['reopened'])
+        self.assertTrue(self.send(operation(task, 5, {'completed': True}))['results'][0]['accepted'])
+        stale = self.send(operation(task, 5, {'wontDoAt': 816826001}))['results'][0]
+        self.assertFalse(stale['accepted'])
+        resolved = self.send(operation(task, 6, {'wontDoAt': 816826001}))['results'][0]['record']['data']
+        self.assertFalse(resolved['completed'])
+        self.assertIsNone(resolved['completedAt'])
+        self.assertEqual(resolved['wontDoAt'], 816826001)
 
     def test_concurrent_native_activity_merges_without_discarding_events(self):
         task = uid()
@@ -100,6 +107,13 @@ class ProtocolTests(unittest.TestCase):
             response = self.store.sync(self.account, [operation(task, 1, patch)], 0, native=True)
             self.assertTrue(response['results'][0]['accepted'])
         self.assertEqual(response['results'][0]['record']['data']['taskActivity'], [first, second])
+
+    def test_task_history_ignores_default_fields_from_older_web_editors(self):
+        task = uid()
+        self.send(operation(task, patch={'title': 'Смета'}))
+        result = self.send(operation(task, 1, {'wontDoAt': 816826000, 'duration': 30, 'checklist': [],
+                                              'recurrence': 'none', 'date': '', 'time': ''}))
+        self.assertEqual(result['results'][0]['record']['data']['taskActivity'][0]['changes'], ['wontDo'])
 
     def test_retry_is_idempotent_and_survives_restart(self):
         op = operation()

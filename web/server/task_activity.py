@@ -44,7 +44,13 @@ def web_task_changes(before, after, project, now):
         'recurrence': ('recurrence', 'repeatEveryDays'),
         'reminders': ('reminderMinutes', 'timedReminderOffsets', 'allDayReminders'),
     }
-    keys.extend(key for key, members in fields.items() if any(before.get(field) != effective.get(field) for field in members))
+    defaults = {'body': '', 'projectID': '', 'section': 'Без раздела', 'duration': 30,
+                'schedule': {'kind': 'none'}, 'priority': 0, 'tagIDs': [],
+                'checklist': [], 'recurrence': 'none'}
+    def value(data, field):
+        result = data.get(field)
+        return defaults.get(field) if result is None else result
+    keys.extend(key for key, members in fields.items() if any(value(before, field) != value(effective, field) for field in members))
     if keys:
         event = {'id': str(uuid.uuid4()), 'date': now, 'changes': keys}
         changes['taskActivity'] = merge_activity(before.get('taskActivity'), [event])

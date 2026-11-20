@@ -49,7 +49,7 @@ struct TaskAnalyticsView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Результаты по дням").font(.headline)
                     if completed.isEmpty && wontDo.isEmpty {
-                        Text("За этот период нет завершённых или отложенных без выполнения задач.")
+                        Text("За этот период нет завершённых задач или решений не выполнять.")
                             .foregroundStyle(.secondary).padding(.vertical, 18)
                     } else {
                         Chart {
