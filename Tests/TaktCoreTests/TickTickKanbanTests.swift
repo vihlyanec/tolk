@@ -13,6 +13,17 @@ private func connectedBoard() -> Snapshot {
     var s = Snapshot(); s.tickTick = TickTickSyncState(connectionID: UUID()); return s
 }
 
+@Test func tickTickRefreshKeepsLocalStageOrderAndRenamesInPlace() {
+    var snapshot = connectedBoard()
+    let stages = [column("a", "В работе"), column("b", "Готово", 1)]
+    importBoard(stages, into: &snapshot)
+    snapshot.projects[0].sections = ["Готово", "Без раздела", "В работе"]
+    importBoard(stages, into: &snapshot)
+    #expect(snapshot.projects[0].sections == ["Готово", "Без раздела", "В работе"])
+    importBoard([column("a", "Проверка", 2), column("b", "Готово", 1), column("c", "Новый", 3)], into: &snapshot)
+    #expect(snapshot.projects[0].sections == ["Готово", "Без раздела", "Проверка", "Новый"])
+}
+
 @Test func kanbanImportsStableStagesOrderAndConfirmedColumnPlacement() throws {
     var s = connectedBoard()
     let task = TickTickTask(["id": .string("task"), "projectId": .string("board"), "title": .string("Задача"), "columnId": .string("a")])

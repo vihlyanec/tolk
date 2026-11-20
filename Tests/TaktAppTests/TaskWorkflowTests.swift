@@ -54,6 +54,31 @@ extension Snapshot {
     #expect(state.item(otherTask.id)?.section == "Без раздела")
 }
 
+@Test @MainActor func sectionReorderUpdatesListAndUndoesWithoutChangingTasksOrRules() throws {
+    let state = AppState(demo: true)
+    var project = Project(name: "Запуск")
+    project.sections = ["Входящие", "В работе", "Готово"]
+    project.moveOnCompletion = "Готово"
+    let items = project.sections.map { section in
+        var item = Item(title: section, projectID: project.id)
+        item.section = section
+        return item
+    }
+    state.data.projects = [project]
+    state.data.items = items
+    state.scope = .project(project.id)
+    state.grouping = .section
+    #expect(!state.moveSection("Готово", to: "В работе", in: UUID()))
+    #expect(state.moveSection("Готово", to: "Входящие", in: project.id))
+    #expect(state.groups.map(\.id) == ["Готово", "Входящие", "В работе"])
+    #expect(state.moveSection("Готово", to: "В работе", in: project.id))
+    #expect(state.project?.sections == project.sections)
+    state.undo()
+    #expect(state.project?.sections == ["Готово", "Входящие", "В работе"])
+    state.redo()
+    #expect(state.project == project && state.data.items == items)
+}
+
 @Test @MainActor func wontDoOnlyClosesOneOccurrenceAndEntersItsOwnList() throws {
     let state = AppState(demo: true)
     var task = Item(title: "Отправить письмо")

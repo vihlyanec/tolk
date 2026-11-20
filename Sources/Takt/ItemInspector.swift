@@ -50,7 +50,8 @@ struct ItemInspector: View {
                             MetadataFlow {
                                 projectMenu(item)
                                 if let project = state.data.projects.first(where: { $0.id == item.projectID }), project.sections.count > 1 || item.section != "Без раздела" {
-                                    InspectorDropdown(symbol: "rectangle.split.3x1", title: item.section, options: Array(Set(project.sections + [item.section])).sorted().map { section in
+                                    let sections = project.sections.contains(item.section) ? project.sections : project.sections + [item.section]
+                                    InspectorDropdown(symbol: "rectangle.split.3x1", title: item.section, options: sections.map { section in
                                         InspectorMenuOption(title: section, selected: item.section == section, action: { state.update(id) { $0.section = section } })
                                     }).help("Раздел")
                                 }

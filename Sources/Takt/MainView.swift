@@ -223,6 +223,15 @@ struct TaskListView: View {
                             Label("Добавить этап", systemImage: "plus")
                         }.help("Создать этап в этом проекте").accessibilityIdentifier("kanban-add-stage")
                     }
+                    if let project = state.project, project.kind == .task, project.sections.count > 1 {
+                        Menu {
+                            ForEach(project.sections, id: \.self) { section in
+                                Menu(section) { sectionMoveActions(section, in: project) }
+                            }
+                        } label: { Image(systemName: "arrow.up.arrow.down") }
+                            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                            .help("Порядок этапов").accessibilityLabel("Порядок этапов")
+                    }
                     Text("\(state.visibleItems.count)").foregroundStyle(.secondary)
                 }.padding(.horizontal, 22).padding(.bottom, 14)
                 if state.area != .notes && state.scope != .trash && state.scope != .completed && state.scope != .wontDo { InlineQuickEntry(state: state) }
@@ -258,22 +267,48 @@ struct TaskListView: View {
         }
     }
     private var kanban: some View {
-        ScrollView(.horizontal) {
-            HStack(alignment: .top, spacing: 14) {
-                ForEach(state.project?.sections ?? ["Без раздела"], id: \.self) { section in
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack { Text(section).fontWeight(.semibold); Spacer(); Text("\(state.visibleItems.filter { $0.section == section }.count)").foregroundStyle(.secondary) }.padding(.bottom, 6)
-                        ForEach(state.sorted(state.visibleItems.filter { $0.section == section })) { item in
-                            TaskRow(state: state, item: item).padding(6).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 7))
-                        }
-                        Spacer(minLength: 200)
-                    }.padding(12).frame(width: 265).background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 7))
-                        .dropDestination(for: String.self) { ids, _ in
-                            guard let raw = ids.first, let id = UUID(uuidString: raw), state.data.items.contains(where: { $0.id == id }) else { return false }
-                            state.update(id) { $0.section = section; $0.projectID = state.project?.id }; return true
-                        }
-                }
-            }.padding(20)
+        if let project = state.project {
+            let prefix = "takt-section:" + project.id.uuidString + ":"
+            ScrollView(.horizontal) {
+                HStack(alignment: .top, spacing: 14) {
+                    ForEach(project.sections, id: \.self) { section in
+                        let tasks = state.visibleItems.filter { $0.section == section }
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Image(systemName: "line.3.horizontal").foregroundStyle(.secondary).accessibilityHidden(true)
+                                Text(section).fontWeight(.semibold)
+                                Spacer()
+                                Text("\(tasks.count)").foregroundStyle(.secondary)
+                            }.padding(.bottom, 6).contentShape(Rectangle())
+                                .draggable(prefix + section)
+                                .help("Перетащить этап")
+                                .contextMenu { sectionMoveActions(section, in: project) }
+                            ForEach(state.sorted(tasks)) { item in
+                                TaskRow(state: state, item: item).padding(6).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 7))
+                            }
+                            Spacer(minLength: 200)
+                        }.padding(12).frame(width: 265).background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 7))
+                            .dropDestination(for: String.self) { values, _ in
+                                guard let value = values.first, state.project?.id == project.id else { return false }
+                                if value.hasPrefix(prefix) {
+                                    return state.moveSection(String(value.dropFirst(prefix.count)), to: section, in: project.id)
+                                }
+                                guard let id = UUID(uuidString: value), state.data.items.contains(where: { $0.id == id }) else { return false }
+                                state.update(id) { $0.section = section; $0.projectID = project.id }; return true
+                            }
+                    }
+                }.padding(20)
+            }
+        }
+    }
+    @ViewBuilder private func sectionMoveActions(_ section: String, in project: Project) -> some View {
+        if let index = project.sections.firstIndex(of: section) {
+            Button("Переместить раньше", systemImage: "arrow.up") {
+                if index > 0 { state.moveSection(section, to: project.sections[index - 1], in: project.id) }
+            }.disabled(index == 0)
+            Button("Переместить позже", systemImage: "arrow.down") {
+                if index + 1 < project.sections.count { state.moveSection(section, to: project.sections[index + 1], in: project.id) }
+            }.disabled(index + 1 == project.sections.count)
         }
     }
 }

@@ -210,3 +210,11 @@ html.editor-open{overflow:hidden}
   .analytics-filters label:last-child { width:min(100%,195px); }
   .analytics-chart { height:100px; }
 }
+
+.section-order { list-style:none; margin:0; padding:0; }
+.section-order li { display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:center; gap:6px; border-top:1px solid var(--line); padding:3px 0; }
+.section-order li > span { overflow-wrap:anywhere; }
+.section-order button { width:32px; height:32px; display:grid; place-items:center; border-radius:6px; color:var(--muted); }
+.section-order button:enabled:hover { background:var(--field); color:var(--text); }
+.section-order button:disabled { opacity:.35; }
+@media(max-width:799px) { .section-order button { width:44px; height:44px; } }

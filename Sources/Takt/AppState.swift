@@ -244,6 +244,17 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         }
         return data.projects.first(where: { $0.id == projectID })?.sections.contains(name) == true ? nil : "Не удалось сохранить этап"
     }
+    @discardableResult
+    func moveSection(_ source: String, to target: String, in projectID: UUID) -> Bool {
+        guard source != target,
+              let project = data.projects.firstIndex(where: { $0.id == projectID && $0.kind == .task && !$0.archived }) else { return false }
+        var ordered = data.projects[project].sections
+        guard let from = ordered.firstIndex(of: source), let to = ordered.firstIndex(of: target) else { return false }
+        ordered.remove(at: from)
+        ordered.insert(source, at: to)
+        change { $0.projects[project].sections = ordered }
+        return data.projects[project].sections == ordered
+    }
     @discardableResult func capture(_ parsed: ParsedTask, body: String = "", initialDate: Date? = nil) -> UUID? {
         guard !parsed.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         var item = parsed.item(); item.body = body

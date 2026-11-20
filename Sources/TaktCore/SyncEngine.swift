@@ -137,6 +137,8 @@ public enum SyncEngine {
         guard values.allSatisfy({ !$0.id.isEmpty && $0.projectId == link.remote.id && !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }),
               Set(values.map(\.id)).count == values.count else { return }
         let previous = link.columns ?? []
+        let previousLabels = Set(previous.map(\.localSection))
+        let followsRemoteOrder = project.sections.filter { previousLabels.contains($0) } == previous.map(\.localSection)
         var next: [TickTickColumnLink] = []
         for column in values.sorted(by: { $0.sortOrder == $1.sortOrder ? $0.id < $1.id : $0.sortOrder < $1.sortOrder }) {
             let old = previous.first { $0.remote.id == column.id }
@@ -148,7 +150,7 @@ public enum SyncEngine {
                 while occupied.contains(label) { label = "\(column.name) (TickTick \(suffix))"; suffix += 1 }
             }
             if let old, old.localSection != label {
-                project.sections.removeAll { $0 == old.localSection }
+                if let index = project.sections.firstIndex(of: old.localSection) { project.sections[index] = label }
                 for i in items.indices where items[i].projectID == project.id && items[i].section == old.localSection { items[i].section = label }
                 for key in Array(taskLinks.keys) where taskLinks[key]?.remote.projectID == link.remote.id && taskLinks[key]?.columnSection == old.localSection {
                     taskLinks[key]?.columnSection = label
@@ -164,8 +166,11 @@ public enum SyncEngine {
                 project.sections.removeAll { $0 == old.localSection }
             }
         }
-        let imported = Set(next.map(\.localSection))
-        project.sections = project.sections.filter { !imported.contains($0) } + next.map(\.localSection)
+        let oldIDs = previous.map(\.remote.id), nextIDs = next.map(\.remote.id)
+        if followsRemoteOrder && oldIDs.filter(nextIDs.contains) != nextIDs.filter(oldIDs.contains) {
+            let imported = Set(next.map(\.localSection))
+            project.sections = project.sections.filter { !imported.contains($0) } + next.map(\.localSection)
+        }
         link.columns = next
     }
     public static func confirm(key: String, sent: TickTickPending, remote: TickTickTask, in snapshot: inout Snapshot) {

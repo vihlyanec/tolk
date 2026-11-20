@@ -50,6 +50,8 @@ const paths = {
   completed: '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
   wontDo: '<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>',
   returnTask: '<path d="m10 6-5 5 5 5M5 11h10a4 4 0 0 1 4 4"/>',
+  up: '<path d="M12 19V5m-5 5 5-5 5 5"/>',
+  down: '<path d="M12 5v14m-5-5 5 5 5-5"/>',
   settings: '<path d="m12 2 8 5v10l-8 5-8-5V7Z"/><circle cx="12" cy="12" r="3"/>',
   bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>',
   close: '<path d="m6 6 12 12M6 18 18 6"/>',
@@ -451,13 +453,15 @@ function openEditor(html, onSave) {
 function editProject(record) {
   const project = record?.data || {};
   const sections = project.sections?.length ? project.sections : ['Без раздела'];
+  const ordered = [...sections];
   const completeSections = sections.includes('Готово') ? sections : [...sections, 'Готово'];
   const options = (values, current) => values.map(section => `<option value="${escape(section)}" ${section===current?'selected':''}>${escape(sections.includes(section)?section:'Создать этап «Готово»')}</option>`).join('');
   openEditor(`<form><header class="editor-header"><button type="button" class="text-button" data-cancel>Отмена</button><h2 id="editor-title">${record?'Настройки проекта':'Новый проект'}</h2><button type="submit" class="text-button">${record?'Сохранить':'Создать'}</button></header><div class="editor-content">
     <label>Название<input name="title" placeholder="Например, Дом" maxlength="500" value="${escape(project.title)}" required autofocus></label>
     ${record && project.itemKind !== 'note' ? `<h3>Автоматизации</h3>
     <label>При завершении<select name="moveOnCompletion"><option value="">Оставить на этапе</option>${options(completeSections,project.moveOnCompletion)}</select></label>
-    <label>При возврате в работу<select name="moveOnReopen"><option value="">Вернуть на прежний этап</option>${options(sections,project.moveOnReopen)}</select></label>` : ''}
+    <label>При возврате в работу<select name="moveOnReopen"><option value="">Вернуть на прежний этап</option>${options(sections,project.moveOnReopen)}</select></label>
+    ${sections.length > 1 ? '<details class="editor-advanced"><summary>Порядок этапов</summary><ol class="section-order" aria-label="Этапы проекта"></ol></details>' : ''}` : ''}
     <p role="alert" class="error"></p></div></form>`, async form => {
     const title = form.get('title').trim();
     if (!title) throw new Error('Введите название проекта.');
@@ -466,9 +470,29 @@ function editProject(record) {
     for (const key of ['moveOnCompletion', 'moveOnReopen']) {
       if (form.has(key) && (form.get(key) || null) !== (project[key] ?? null)) patch[key] = form.get(key) || null;
     }
-    if (patch.moveOnCompletion === 'Готово' && !sections.includes('Готово')) patch.sections = completeSections;
+    if (patch.moveOnCompletion === 'Готово' && !ordered.includes('Готово')) ordered.push('Готово');
+    if (ordered.length !== sections.length || ordered.some((section,index) => section !== sections[index])) patch.sections = ordered;
     if (Object.keys(patch).length) await client.mutate('project', record?.id || crypto.randomUUID(), patch, record);
   });
+  const list = editor.querySelector('.section-order');
+  if (list) {
+    const renderOrder = () => {
+      list.innerHTML = ordered.map((section,index) => `<li><span>${escape(section)}</span>
+        <button type="button" data-step="-1" aria-label="Переместить раньше: ${escape(section)}" ${index === 0 ? 'disabled' : ''}>${icon('up')}</button>
+        <button type="button" data-step="1" aria-label="Переместить позже: ${escape(section)}" ${index === ordered.length - 1 ? 'disabled' : ''}>${icon('down')}</button></li>`).join('');
+    };
+    list.onclick = event => {
+      const button = event.target.closest('[data-step]');
+      if (!button || button.disabled) return;
+      const index = [...list.children].indexOf(button.closest('li'));
+      const target = index + Number(button.dataset.step);
+      [ordered[index], ordered[target]] = [ordered[target], ordered[index]];
+      renderOrder();
+      const row = list.children[target];
+      (row.querySelector(`[data-step="${button.dataset.step}"]:enabled`) || row.querySelector('button:enabled'))?.focus();
+    };
+    renderOrder();
+  }
 }
 function parseCapture(text) {
   const note=notesView();
@@ -883,7 +907,12 @@ function renderCalendar(content,tasks) {
 function groupedRows(records) {
  if(['calendar','search','tag','notes','completed','wontDo'].includes(view))return records.map(taskRow).join('');
  const groups=new Map();for(const r of records){const date=r.data.date;const label=view==='projects'?(r.data.section||'Без раздела'):!date?'Без даты':date<today()?'Просрочено':date===today()?'Сегодня':dateLabel(date);if(!groups.has(label))groups.set(label,[]);groups.get(label).push(r);}
- return Array.from(groups,([label,items])=>`<section class="list-group"><h2>${escape(label)}<small>${items.length}</small></h2>${items.map(taskRow).join('')}</section>`).join('');
+ const stages = view === 'projects' ? projects().find(project => project.id === projectID)?.data.sections ?? [] : [];
+ const order = new Set([...stages, ...groups.keys()]);
+ return [...order].filter(label => groups.has(label)).map(label => {
+   const items = groups.get(label);
+   return `<section class="list-group"><h2>${escape(label)}<small>${items.length}</small></h2>${items.map(taskRow).join('')}</section>`;
+ }).join('');
 }
 function applyTagColors(){
  const dark=document.documentElement.dataset.theme==='dark'||(document.documentElement.dataset.theme==='system'&&matchMedia('(prefers-color-scheme:dark)').matches);
