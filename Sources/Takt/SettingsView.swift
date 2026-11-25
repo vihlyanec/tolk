@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @Bindable var state: AppState
-    let shortcutStatus: () -> String
+    let shortcutStatus: () -> GlobalShortcutStatus
     @ViewState private var page = Page.general
     @ViewState private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @ViewState private var completionFeedback = CompletionFeedback()

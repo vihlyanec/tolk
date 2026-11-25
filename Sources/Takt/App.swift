@@ -322,7 +322,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         if settingsWindow == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 580, height: 690), styleMask: [.titled,.closable,.resizable], backing: .buffered, defer: false)
             window.title = "Настройки · Толк"; window.isReleasedWhenClosed = false; window.delegate = self
-            let content = host(SettingsView(state: state) { [weak self] in self?.keys?.summary ?? "" })
+            let content = host(SettingsView(state: state) { [weak self] in self?.keys?.shortcuts ?? GlobalShortcutStatus() })
             content.sizingOptions = []
             window.contentView = content; window.center(); settingsWindow = window
         }
@@ -688,7 +688,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
                 snapshot.preferences.defaultTimedReminderOffsets = [10, 60]
                 snapshot.preferences.defaultAllDayReminders = [AllDayReminder(), AllDayReminder(daysBefore: 1, minuteOfDay: 1080)]
             }
-            render(SettingsView(state: state, shortcutStatus: { "Control-Q — задача\nControl-D — заметка" }), name: "settings", width: 580, height: 690)
+            render(SettingsView(state: state, shortcutStatus: { GlobalShortcutStatus(task: "⌃Q", note: "⌃D") }), name: "settings", width: 580, height: 690)
             state.accountService = AccountService(state: state)
             render(Form { AccountSettingsSection(state: state) }.formStyle(.grouped), name: "account-settings", width: 580, height: 420)
             render(StickyView(state: state, id: note.id, close: {}), name: "sticky", width: 330, height: 300)

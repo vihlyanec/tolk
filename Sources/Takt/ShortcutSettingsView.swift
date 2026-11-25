@@ -2,17 +2,16 @@ import SwiftUI
 
 struct ShortcutSettingsView: View {
     @Binding var shifted: Bool
-    let status: String
+    let status: GlobalShortcutStatus
 
     var body: some View {
         Form {
             Section("Из любого приложения") {
-                let prefix = shifted ? "⌃⇧" : "⌃"
-                shortcut("Быстро добавить задачу", prefix + "Q")
-                shortcut("Открыть новую заметку-стикер", prefix + "D")
+                shortcut("Быстро добавить задачу", status.task)
+                shortcut("Открыть новую заметку-стикер", status.note)
                 Toggle("Всегда использовать варианты с Shift", isOn: $shifted)
-                if !status.isEmpty {
-                    Text(status).font(.system(size: 11)).foregroundStyle(.secondary).textSelection(.enabled)
+                if let error = status.error {
+                    Text(error).font(.system(size: 11)).foregroundStyle(.secondary).textSelection(.enabled)
                 }
                 Text("Если основное сочетание занято, Толк пробует вариант с Shift.")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
@@ -37,6 +36,8 @@ struct ShortcutSettingsView: View {
             Section("Календарь и диалоги") {
                 shortcut("Выбрать день в мини-календаре", "← ↑ ↓ →")
                 shortcut("Перейти к выбранной дате", "↩")
+                shortcut("Скопировать выбранное событие", "⌘C")
+                shortcut("Вставить событие на позицию указателя", "⌘V")
                 shortcut("Подтвердить выбранное действие в диалоге", "↩")
                 shortcut("Закрыть меню «Сегодня» или пропустить заметку паузы", "Esc")
             }
@@ -54,13 +55,17 @@ struct ShortcutSettingsView: View {
         }.formStyle(.grouped).frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func shortcut(_ title: String, _ keys: String) -> some View {
+    private func shortcut(_ title: String, _ keys: String?) -> some View {
         LabeledContent(title) {
-            Text(keys)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .padding(.horizontal, 7).padding(.vertical, 3)
-                .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 5))
-                .fixedSize()
+            if let keys {
+                Text(keys)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 5))
+                    .fixedSize()
+            } else {
+                Text("Недоступно").font(.system(size: 12)).foregroundStyle(.secondary)
+            }
         }.accessibilityElement(children: .combine)
     }
 }
