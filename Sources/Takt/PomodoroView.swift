@@ -10,11 +10,13 @@ import TaktCore
     var error: String?
     @ObservationIgnored var didChange: (String) -> Void = { _ in }
     @ObservationIgnored var didUpdate: () -> Void = {}
+    @ObservationIgnored var didFinishFocus: (FocusCompletion) -> Void = { _ in }
     private let url: URL?
     private let notificationsEnabled: Bool
     @ObservationIgnored private let startFeedback = FocusStartFeedback()
     @ObservationIgnored var playStartSound: () -> Void = { }
     @ObservationIgnored private var notificationTask: Task<Void, Never>?
+    @ObservationIgnored private var focusDeadlineTask: Task<Void, Never>?
     init(url: URL?, notificationsEnabled: Bool = true) {
         self.url = url; self.notificationsEnabled = notificationsEnabled
         if url != nil, notificationsEnabled { playStartSound = { [startFeedback] in startFeedback.play() } }
@@ -24,6 +26,7 @@ import TaktCore
         }
     }
     func start(_ item: Item, now: Date = Date()) {
+        recordFinishedFocus(now: now)
         session = Pomodoro(taskID: item.id, title: item.title, now: now); pausePrompt = false; save()
         playStartSound()
     }
@@ -53,11 +56,37 @@ import TaktCore
         if startsFocus { playStartSound() }
     }
     func next(now: Date = Date()) {
+        recordFinishedFocus(now: now)
         let finishedBreak = session.map { $0.phase != .focus && $0.seconds(at: now) == 0 } ?? false
         session?.next(at: now); save()
         if finishedBreak { playStartSound() }
     }
-    func stop() { session = nil; pausePrompt = false; save() }
+    func stop(now: Date = Date()) {
+        recordFinishedFocus(now: now)
+        session = nil; pausePrompt = false; save()
+    }
+
+    func observeFocusDeadline() {
+        focusDeadlineTask?.cancel()
+        guard let current = session, current.phase == .focus, let deadline = current.deadline else { return }
+        let delay = deadline.timeIntervalSinceNow
+        if delay <= 0 {
+            recordFinishedFocus(now: Date())
+        } else if delay <= Double(Pomodoro.focusMinutes * 60) + 5 {
+            focusDeadlineTask = Task { [weak self] in
+                do { try await Task.sleep(for: .seconds(delay), clock: .continuous) } catch { return }
+                guard !Task.isCancelled else { return }
+                self?.recordFinishedFocus(now: Date())
+            }
+        }
+    }
+
+    private func recordFinishedFocus(now: Date) {
+        guard let current = session, current.phase == .focus, let deadline = current.deadline, deadline <= now else { return }
+        // The account represents deadlines in milliseconds. Use the same precision for retries.
+        let timestamp = (deadline.timeIntervalSince1970 * 1000).rounded() / 1000
+        didFinishFocus(FocusCompletion(taskID: current.taskID, finishedAt: Date(timeIntervalSince1970: timestamp)))
+    }
     var sharedSession: String {
         guard let session else { return "" }
         let value: [String: SyncJSON] = ["taskID":.string(session.taskID.uuidString.lowercased()),"title":.string(session.title),
@@ -67,7 +96,7 @@ import TaktCore
         return (try? String(data:encoder.encode(value),encoding:.utf8)) ?? ""
     }
     func acceptSharedSession(_ encoded: String) throws {
-        guard !encoded.isEmpty else { session = nil; pausePrompt = false; save(notify:false); return }
+        guard !encoded.isEmpty else { recordFinishedFocus(now: Date()); session = nil; pausePrompt = false; save(notify:false); return }
         let fields = try JSONDecoder().decode(SyncFields.self,from:Data(encoded.utf8))
         guard let id = fields["taskID"]?.string.flatMap(UUID.init(uuidString:)), let title = fields["title"]?.string,
               let phase = fields["phase"]?.string.flatMap(Pomodoro.Phase.init(rawValue:)),
@@ -76,6 +105,9 @@ import TaktCore
         var value = Pomodoro(taskID:id,title:title); value.phase = phase; value.completed = completed; value.remaining = remaining
         if case .number(let deadline) = fields["deadline"], deadline.isFinite { value.deadline = Date(timeIntervalSince1970:deadline/1000) } else { value.deadline = nil }
         value.resumeNote = fields["resumeNote"]?.string
+        if value.taskID != session?.taskID || value.phase != session?.phase || value.completed != session?.completed {
+            recordFinishedFocus(now: Date())
+        }
         session = value; pausePrompt = false; save(notify:false)
     }
     private func save(notify: Bool = true) {
@@ -89,6 +121,7 @@ import TaktCore
         } catch { self.error = "Таймер работает, но не сохранён: \(error.localizedDescription)" }
         if notify { didChange(sharedSession) }
         didUpdate()
+        observeFocusDeadline()
         // Demo and unit tests never request permission or schedule system notifications.
         guard url != nil, notificationsEnabled else { return }
         let previous = notificationTask

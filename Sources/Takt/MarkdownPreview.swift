@@ -10,6 +10,12 @@ nonisolated enum MarkdownHTML {
         guard let url = URL(string: value), ["https", "http", "mailto"].contains(url.scheme?.lowercased() ?? "") else { return nil }
         return url
     }
+    static func linkedTaskID(_ value: String) -> UUID? {
+        guard let parts = URLComponents(string: value), parts.scheme == "tolk-task", parts.host == "item",
+              parts.user == nil, parts.password == nil, parts.port == nil, parts.query == nil, parts.fragment == nil,
+              parts.path.first == "/" else { return nil }
+        return UUID(uuidString: String(parts.path.dropFirst()))
+    }
     static func copyURL(_ text: String) -> URL? {
         var components = URLComponents()
         components.scheme = "tolk-copy"
@@ -44,7 +50,9 @@ nonisolated enum MarkdownHTML {
                     html += "<a class=\"copy-code\" title=\"Скопировать\" href=\"\(escape(url.absoluteString))\">\(rendered)</a>"
                 } else { html += rendered }
             }
-            else if links, let label = value(2), let target = value(3), let url = safeURL(target) {
+            else if links, !raw.hasPrefix("!"), let label = value(2), let target = value(3), linkedTaskID(target) != nil {
+                html += "<a class=\"linked-task\" href=\"\(escape(target))\">\(inline(label, links: false))</a>"
+            } else if links, let label = value(2), let target = value(3), let url = safeURL(target) {
                 if raw.hasPrefix("!") { html += "<a href=\"\(escape(url.absoluteString))\"><img alt=\"\(escape(label))\" src=\"\(escape(url.absoluteString))\"></a>" }
                 else { html += "<a href=\"\(escape(url.absoluteString))\">\(inline(label, links: false))</a>" }
             } else if links, raw.hasPrefix("http"), let url = safeURL(raw.trimmingCharacters(in: CharacterSet(charactersIn: ".,;!?)"))) {

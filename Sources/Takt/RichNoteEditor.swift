@@ -9,6 +9,9 @@ struct RichNoteEditor: NSViewRepresentable {
     var tags: [Tag] = []
     var editable = true
     var commitTags: () -> Void = {}
+    var convertLine: ((String, Int, String, Bool, String) -> UUID?)?
+    var openLinkedTask: ((UUID) -> Void)?
+    var conversionUnavailable: () -> Void = {}
     @Environment(\.colorScheme) private var scheme
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeNSView(context: Context) -> WKWebView {
@@ -37,14 +40,20 @@ struct RichNoteEditor: NSViewRepresentable {
             web.loadHTMLString(html, baseURL: nil)
         } else if coordinator.ready, coordinator.lastText != text {
             coordinator.lastText = text
-            web.callAsyncJavaScript("window.setNote(html)", arguments: ["html": MarkdownHTML.body(text)], in: nil, in: .page) { _ in }
+            let converted = coordinator.convertedTaskID?.uuidString.lowercased() ?? ""
+            coordinator.convertedTaskID = nil
+            web.callAsyncJavaScript("window.setNote(html, converted)", arguments: ["html": MarkdownHTML.body(text), "converted": converted], in: nil, in: .page) { _ in }
         }
         if coordinator.ready {
             let dark = scheme == .dark
             web.callAsyncJavaScript("window.noteConfig(tags, editable, dark)", arguments: ["tags": tags.map { ["name": $0.name, "color": SemanticTint.vibrantHex($0.color)] }, "editable": editable, "dark": dark], in: nil, in: .page) { _ in }
             if let action, action.id != coordinator.lastAction {
                 coordinator.lastAction = action.id
-                web.callAsyncJavaScript("window.formatNote(before, after)", arguments: ["before": action.before, "after": action.after], in: nil, in: .page) { _ in }
+                if action.before == "convert-task" {
+                    web.callAsyncJavaScript("window.convertTaskLine()", arguments: [:], in: nil, in: .page) { _ in }
+                } else {
+                    web.callAsyncJavaScript("window.formatNote(before, after)", arguments: ["before": action.before, "after": action.after], in: nil, in: .page) { _ in }
+                }
             }
         }
     }
@@ -53,6 +62,7 @@ struct RichNoteEditor: NSViewRepresentable {
         var loaded = false, ready = false
         var lastText = ""
         var lastAction: UUID?
+        var convertedTaskID: UUID?
         init(_ parent: RichNoteEditor) { self.parent = parent }
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             guard let value = message.body as? [String: String] else { return }
@@ -61,10 +71,23 @@ struct RichNoteEditor: NSViewRepresentable {
                 lastText = text; parent.text = text
             }
             if value["type"] == "commitTags" { parent.commitTags() }
-            if value["type"] == "link", let raw = value["url"], let url = MarkdownHTML.safeURL(raw) { NSWorkspace.shared.open(url) }
+            if value["type"] == "convertTask", parent.editable, let line = value["line"], let title = value["title"],
+               let occurrence = value["occurrence"].flatMap(Int.init) {
+                if let id = parent.convertLine?(line, occurrence, title, value["completed"] == "true", value["suffix"] ?? "") {
+                    convertedTaskID = id
+                }
+            }
+            if value["type"] == "convertUnavailable", parent.editable { parent.conversionUnavailable() }
+            if value["type"] == "link", let raw = value["url"] {
+                if let id = MarkdownHTML.linkedTaskID(raw) { parent.openLinkedTask?(id) }
+                else if let url = MarkdownHTML.safeURL(raw) { NSWorkspace.shared.open(url) }
+            }
         }
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
-            if action.navigationType == .linkActivated, let url = action.request.url, MarkdownHTML.safeURL(url.absoluteString) != nil { NSWorkspace.shared.open(url) }
+            if action.navigationType == .linkActivated, let url = action.request.url {
+                if let id = MarkdownHTML.linkedTaskID(url.absoluteString) { parent.openLinkedTask?(id) }
+                else if MarkdownHTML.safeURL(url.absoluteString) != nil { NSWorkspace.shared.open(url) }
+            }
             decisionHandler(action.request.url?.scheme == "about" ? .allow : .cancel)
         }
     }
@@ -78,10 +101,11 @@ struct RichNoteEditor: NSViewRepresentable {
     static let script = #"""
     (()=>{
       const editor=document.getElementById('editor'), menu=document.getElementById('suggestions');
-      let savedRange=null,tags=[],choices=[],choice=0,tagRange=null,composing=false;
+      let savedRange=null,tags=[],choices=[],choice=0,tagRange=null,composing=false,conversionBlock=null;
       const send=(type,data={})=>window.webkit.messageHandlers.note.postMessage({type,...data});
       const escape=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
       function serialize(node){
+        if(node===conversionBlock)return String.fromCharCode(0)+'\n';
         if(node.nodeType===3)return node.textContent.replace(/\u00a0/g,' ').replace(/\u200b/g,'');
         if(node.nodeType!==1)return '';
         const name=node.tagName.toLowerCase(), children=()=>Array.from(node.childNodes).map(serialize).join('');
@@ -123,7 +147,55 @@ struct RichNoteEditor: NSViewRepresentable {
       function restore(){const current=getSelection();if(current.rangeCount&&editor.contains(current.anchorNode))savedRange=current.getRangeAt(0).cloneRange();editor.focus();const s=getSelection();if(savedRange&&editor.contains(savedRange.commonAncestorContainer)){s.removeAllRanges();s.addRange(savedRange);}else{const r=document.createRange();r.selectNodeContents(editor);r.collapse(false);s.removeAllRanges();s.addRange(r);}}
       document.addEventListener('selectionchange',()=>{const s=getSelection();if(s.rangeCount&&editor.contains(s.anchorNode))savedRange=s.getRangeAt(0).cloneRange();});
       function normalize(){editor.querySelectorAll('.task').forEach(row=>{if(row.querySelector('input'))return;const box=document.createElement('input');box.type='checkbox';box.checked=row.textContent.startsWith('☑');box.setAttribute('aria-label','Выполнить пункт');if(row.firstChild?.nodeType===3)row.firstChild.remove();row.prepend(box);});}
-      window.setNote=html=>{editor.innerHTML=html;normalize();savedRange=null;};
+      window.setNote=(html,converted)=>{
+        editor.innerHTML=html;normalize();savedRange=null;
+        if(!converted)return;
+        const link=Array.from(editor.querySelectorAll('a.linked-task')).find(node=>node.getAttribute('href')==='tolk-task://item/'+converted);
+        if(!link)return;
+        const range=document.createRange();
+        range.setStartAfter(link);range.collapse(true);
+        editor.focus();
+        const selection=getSelection();selection.removeAllRanges();selection.addRange(range);savedRange=range;
+      };
+      const lineKey=text=>text.trim().replace(/^(?:[-*+]|\d+[.)])\s+/,'').replace(/^\[X\]/,'[x]');
+      window.convertTaskLine=(toCaret=false)=>{
+        restore();
+        const selected=getSelection();
+        const parent=node=>node?.nodeType===1?node:node?.parentElement;
+        const blockAt=node=>node?.nodeType===3&&node.parentNode===editor?node:parent(node)?.closest('.task,.list,p,li,div');
+        const block=blockAt(selected.anchorNode);
+        if(!block||!editor.contains(block)||block!==blockAt(selected.focusNode)||parent(block)?.closest('table,pre,blockquote')||block.querySelector?.('a.linked-task')||(toCaret&&!selected.isCollapsed)){
+          send('convertUnavailable');return;
+        }
+        const line=serialize(block).trim();
+        const content=block.matches?.('.list,.task')?block.querySelector('span:not(.marker)'):block;
+        let title=(content?.innerText??content?.textContent??'').trim(),suffix='';
+        if(toCaret&&content&&(selected.anchorNode===content||content.contains(selected.anchorNode))){
+          const before=document.createRange(),after=document.createRange();
+          before.selectNodeContents(content);after.selectNodeContents(content);
+          before.setEnd(selected.anchorNode,selected.anchorOffset);after.setStart(selected.anchorNode,selected.anchorOffset);
+          const prefix=before.toString().replace(/\u200b/g,'').replace(/\u00a0/g,' ');
+          title=prefix.trim();
+          const remainder=after.cloneContents(), textNodes=document.createTreeWalker(remainder,NodeFilter.SHOW_TEXT);
+          let gap=prefix.match(/[ \t]+$/)?.[0]??'';
+          while(textNodes.nextNode()){
+            const node=textNodes.currentNode, space=node.data.match(/^[ \t\u00a0\u200b]+/)?.[0]??'';
+            gap+=space.replace(/\u00a0/g,' ').replace(/\u200b/g,'');
+            node.deleteData(0,space.length);
+            if(node.length)break;
+          }
+          for(const inline of Array.from(remainder.querySelectorAll('b,strong,em,i,del,s,strike,code,a')).reverse()){
+            if(!inline.textContent&&!inline.querySelector('img,br'))inline.remove();
+          }
+          if(remainder.textContent||remainder.querySelector('img'))suffix=gap+Array.from(remainder.childNodes).map(serialize).join('');
+        }else if(toCaret){send('convertUnavailable');return;}
+        if(!title||/[\r\n]/.test(title)||/[\r\n]/.test(line)) {send('convertUnavailable');return;}
+        conversionBlock=block;
+        const preceding=markdown().split(String.fromCharCode(0))[0];
+        conversionBlock=null;
+        const occurrence=preceding.split('\n').filter(value=>lineKey(value)===lineKey(line)).length;
+        send('convertTask',{line,title,suffix,occurrence:String(occurrence),completed:String(block.querySelector?.('input')?.checked===true)});
+      };
       window.noteConfig=(newTags,editable,dark)=>{tags=newTags;editor.contentEditable=String(editable);document.documentElement.style.colorScheme=dark?'dark':'light';document.documentElement.style.setProperty('--ink',dark?'#e5e5e7':'#232326');document.documentElement.style.setProperty('--link',dark?'#82a8ff':'#295cd1');};
       window.formatNote=(before,after)=>{
         restore();const selection=getSelection(), selected=selection.toString();
@@ -164,11 +236,14 @@ struct RichNoteEditor: NSViewRepresentable {
       }
       editor.addEventListener('compositionstart',()=>composing=true);editor.addEventListener('compositionend',()=>{composing=false;changed();suggest();});
       editor.addEventListener('input',e=>{if(composing)return;inlineTyping();changed();if(e.data===' '||e.inputType==='insertParagraph'||e.inputType==='insertLineBreak')send('commitTags');suggest();});
-      editor.addEventListener('blur',()=>{changed();send('commitTags');});
+      editor.addEventListener('blur',()=>send('commitTags'));
       editor.addEventListener('change',e=>{if(e.target.type==='checkbox'){e.target.toggleAttribute('checked',e.target.checked);const span=e.target.parentElement.querySelector('span');span?.classList.toggle('done',e.target.checked);changed();}});
       editor.addEventListener('paste',e=>{e.preventDefault();document.execCommand('insertText',false,e.clipboardData.getData('text/plain'));});
       editor.addEventListener('click',e=>{const link=e.target.closest('a');if(link&&!e.altKey){e.preventDefault();send('link',{url:link.href});}});
       editor.addEventListener('keydown',e=>{
+        if(e.key==='Enter'&&e.metaKey&&e.shiftKey&&!e.ctrlKey&&!e.altKey&&editor.isContentEditable&&!e.isComposing&&!composing){
+          e.preventDefault();if(!e.repeat){hideTags();window.convertTaskLine(true);}return;
+        }
         if(choices.length){if(['ArrowDown','ArrowUp'].includes(e.key)){e.preventDefault();choice=(choice+(e.key==='ArrowDown'?1:-1)+choices.length)%choices.length;Array.from(menu.children).forEach((b,i)=>b.className=i===choice?'selected':'');return;}if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();acceptTag(choice);return;}if(e.key==='Escape'){e.preventDefault();hideTags();return;}}
         if(e.key===' '){const s=getSelection();if(s.isCollapsed&&s.anchorNode?.nodeType===3){const text=s.anchorNode.textContent.slice(0,s.anchorOffset);let command=null,value=null;if(/^#{1,6}$/.test(text)){command='formatBlock';value='h'+text.length;}else if(text==='- [ ]'){command='check';}else if(text==='-'||text==='*'){command='insertUnorderedList';}else if(text==='1.'){command='insertOrderedList';}else if(text==='>'){command='formatBlock';value='blockquote';}else if(text==='```'){command='formatBlock';value='pre';}if(command){e.preventDefault();const r=document.createRange();r.setStart(s.anchorNode,0);r.setEnd(s.anchorNode,s.anchorOffset);s.removeAllRanges();s.addRange(r);document.execCommand('delete');if(command==='check')window.formatNote('- [ ] ','');else document.execCommand(command,false,value);changed();}}}
       });

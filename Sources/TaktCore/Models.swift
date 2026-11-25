@@ -111,6 +111,7 @@ public struct Preferences: Codable, Equatable, Sendable {
     public init() {}
 }
 public struct Snapshot: Codable, Equatable, Sendable {
+    public var workspaceOptions: LocalWorkspaceOptions?
     public var accountSync: AccountSyncState?
     public var tickTick: TickTickSyncState?
     public var appleCalendar: AppleCalendarState?

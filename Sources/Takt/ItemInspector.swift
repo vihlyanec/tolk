@@ -31,6 +31,9 @@ struct ItemInspector: View {
                     }
                     if item.kind == .task {
                         Menu {
+                            if !item.deleted {
+                                Button("Быстрые действия…", systemImage: "command") { state.showTaskActions(id) }
+                            }
                             Button("Активность", systemImage: "clock.arrow.circlepath") { activityOpen = true }
                             if !item.completed && !item.deleted {
                                 Button(item.wontDoAt == nil ? "Не буду выполнять" : "Вернуть в работу", systemImage: item.wontDoAt == nil ? "minus.circle" : "arrow.uturn.backward") { state.toggleWontDo(id) }
@@ -56,7 +59,13 @@ struct ItemInspector: View {
                                     }).help("Раздел")
                                 }
                             }
-                            if item.kind == .task { scheduling(item) }
+                            if item.kind == .task {
+                                scheduling(item)
+                                Label("План \(state.durationLabel(item.duration)) · В фокусе \(state.durationLabel(state.focusedMinutes(for: id)))",
+                                      systemImage: "timer")
+                                    .font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit()
+                                    .help("Время завершённых подходов Помодоро на этом Mac")
+                            }
                             MetadataFlow {
                                 if item.kind == .task && item.schedule.date != nil { reminderButton(item) }
                                 ForEach(item.tagIDs, id: \.self) { tagID in if let tag = state.data.tags.first(where: { $0.id == tagID }) { TagCapsule(tag: tag) } }
@@ -81,9 +90,16 @@ struct ItemInspector: View {
                                 formatButton("textformat.size", "Заголовок", "## ", "")
                                 formatButton("list.bullet", "Список", "- ", "")
                                 formatButton("checklist", "Чек-лист", "- [ ] ", "")
+                                formatButton("checkmark.rectangle", "Создать задачу из строки", "convert-task", "")
                                 formatButton("link", "Ссылка", "[", "](https://)")
                             }
-                            RichNoteEditor(text: binding(\.body, fallback: ""), action: format, tags: state.data.tags, editable: !item.deleted, commitTags: { state.commitHashtags(id) }).frame(minHeight: 260)
+                            RichNoteEditor(text: binding(\.body, fallback: ""), action: format, tags: state.data.tags,
+                                           editable: !item.deleted, commitTags: { state.commitHashtags(id) },
+                                           convertLine: { line, occurrence, title, done, suffix in
+                                               state.createTaskFromNoteLine(noteID: id, sourceLine: line, occurrence: occurrence, title: title, completed: done, suffix: suffix)
+                                           }, openLinkedTask: state.openLinkedTask,
+                                           conversionUnavailable: { state.errorMessage = "Поставьте курсор после текста задачи в заметке." })
+                                .frame(minHeight: 260)
                         } else if preview {
                             MarkdownPreview(text: item.body, taskLinks: true) { copiedAt = Date() }.frame(minHeight: 180)
                         } else {

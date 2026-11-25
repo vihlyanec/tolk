@@ -6,12 +6,29 @@ import UniformTypeIdentifiers
 struct SettingsView: View {
     @Bindable var state: AppState
     let shortcutStatus: () -> String
+    @ViewState private var page = Page.general
     @ViewState private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @ViewState private var completionFeedback = CompletionFeedback()
+    private enum Page: String, CaseIterable { case general = "Основные", shortcuts = "Горячие клавиши" }
     private func preference<T>(_ key: WritableKeyPath<Preferences, T>) -> Binding<T> {
         Binding(get: { state.data.preferences[keyPath: key] }, set: { value in state.change { $0.preferences[keyPath: key] = value } })
     }
     var body: some View {
+        VStack(spacing: 0) {
+            Picker("Раздел настроек", selection: $page) {
+                ForEach(Page.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }.pickerStyle(.segmented).labelsHidden().frame(width: 294).padding(14)
+            Divider()
+            if page == .shortcuts {
+                ShortcutSettingsView(shifted: preference(\.shiftedShortcuts), status: shortcutStatus())
+            } else {
+                generalSettings
+            }
+        }.frame(maxWidth: .infinity, maxHeight: .infinity)
+            .modifier(ProjectDeletionPrompt(state: state, inSettings: true))
+            .preferredColorScheme(state.data.preferences.theme == "light" ? .light : state.data.preferences.theme == "dark" ? .dark : nil)
+    }
+    private var generalSettings: some View {
         Form {
             Section("Внешний вид") {
                 Picker("Тема", selection: preference(\.theme)) { Text("Тёмная").tag("dark"); Text("Светлая").tag("light"); Text("Системная").tag("system") }
@@ -43,10 +60,7 @@ struct SettingsView: View {
                 AllDayReminderEditor(values: Binding(get: { state.data.preferences.defaultAllDayReminders ?? [] }, set: { values in state.change { $0.preferences.defaultAllDayReminders = values } }), calendar: state.calendar)
                 Text("Можно добавить несколько уведомлений. Эти настройки используются задачами без собственных напоминаний.").font(.system(size: 11)).foregroundStyle(.secondary)
             }
-            Section("Горячие клавиши и запуск") {
-                Text(shortcutStatus()).font(.system(size: 12)).textSelection(.enabled)
-                Toggle("Использовать Control-Shift-Q / D", isOn: preference(\.shiftedShortcuts))
-                Text("Если Control-Q или Control-D заняты TickTick, временно используется вариант с Shift. Настройки TickTick не изменяются.").font(.system(size: 11)).foregroundStyle(.secondary)
+            Section("Запуск") {
                 Toggle("Запускать при входе в macOS", isOn: $launchAtLogin).onChange(of: launchAtLogin) { _, enabled in
                     Task { @MainActor in
                         do { if enabled { try SMAppService.mainApp.register() } else { try await SMAppService.mainApp.unregister() } }
@@ -87,8 +101,6 @@ struct SettingsView: View {
                 if let notice = state.notice { Text(notice).foregroundStyle(Palette.accent) }
             }
         }.formStyle(.grouped).frame(maxWidth: .infinity, maxHeight: .infinity)
-            .modifier(ProjectDeletionPrompt(state: state, inSettings: true))
-            .preferredColorScheme(state.data.preferences.theme == "light" ? .light : state.data.preferences.theme == "dark" ? .dark : nil)
     }
     private func exportData() {
         let panel = NSSavePanel(); panel.nameFieldStringValue = "Толк-\(Date().formatted(.iso8601.year().month().day())).json"; panel.allowedContentTypes = [.json]

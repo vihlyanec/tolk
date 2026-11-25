@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct CalendarView: View {
     @Bindable var state: AppState
     @ViewState private var compactQueueOpen = false
+    @ViewState private var dateJumpOpen = false
     var body: some View {
         GeometryReader { viewport in
             if viewport.size.width >= 920 {
@@ -70,7 +71,18 @@ struct CalendarView: View {
     }
     private var periodControls: some View {
         HStack(spacing: 8) {
-            Text(monthTitle).font(.system(size: 21, weight: .semibold)).lineLimit(1)
+            Button { dateJumpOpen.toggle() } label: {
+                HStack(spacing: 6) {
+                    Text(CalendarDateJump.periodTitle(for: state.anchor, mode: state.calendarMode, calendar: state.calendar))
+                        .font(.system(size: 21, weight: .semibold)).lineLimit(1).truncationMode(.tail)
+                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
+                }.contentShape(Rectangle())
+            }.buttonStyle(.plain).help("Перейти к дате").accessibilityHint("Открывает мини-календарь")
+                .popover(isPresented: $dateJumpOpen, arrowEdge: .bottom) {
+                    CalendarDateJump(anchor: state.anchor, calendar: state.calendar) { date in
+                        state.anchor = date; dateJumpOpen = false
+                    }
+                }
             IconButton(symbol: "chevron.left", help: "Предыдущий период") { advance(-1) }
             IconButton(symbol: "chevron.right", help: "Следующий период") { advance(1) }
             Button("Сегодня") { state.anchor = Date() }.buttonStyle(.bordered)
@@ -92,10 +104,6 @@ struct CalendarView: View {
         Picker("Вид календаря", selection: $state.calendarMode) {
             ForEach(["День", "Неделя", "Месяц"], id: \.self) { Text($0).tag($0) }
         }
-    }
-    private var monthTitle: String {
-        let f = DateFormatter(); f.locale = Locale(identifier: "ru_RU"); f.timeZone = state.calendar.timeZone; f.dateFormat = "LLLL yyyy"
-        return f.string(from: state.anchor).capitalized
     }
     private var days: [Date] {
         let start = state.calendarMode == "День" ? state.calendar.startOfDay(for: state.anchor) : state.calendar.dateInterval(of: .weekOfYear, for: state.anchor)?.start ?? state.anchor
@@ -139,6 +147,7 @@ struct CalendarView: View {
                                             Text(item.title).font(.system(size: compact ? 11 : 12)).strikethrough(item.completed).foregroundStyle(item.completed ? .secondary : .primary).lineLimit(1)
                                         }.padding(.horizontal, 3).frame(height: 26).frame(maxWidth: .infinity, alignment: .leading)
                                             .background(Color(hex: state.color(item)).opacity(item.completed ? 0.18 : 0.40), in: RoundedRectangle(cornerRadius: 3))
+                                            .modifier(ProjectedOccurrenceOutline(state: state, item: item, radius: 3))
                                             .contentShape(Rectangle())
                                             .onTapGesture { state.selectCalendar(item.id) }.onDrag { state.beginDrag(item) }
                                             .contextMenu { ItemContextMenu(state: state, item: item) }
@@ -269,7 +278,12 @@ struct DayColumn: View {
                 }
                 if let minute = hoverMinute, state.draggingID != nil {
                     RoundedRectangle(cornerRadius: 4).fill(Palette.accent.opacity(0.18)).overlay { RoundedRectangle(cornerRadius: 4).stroke(Palette.accent, style: StrokeStyle(lineWidth: 1, dash: [4])) }
-                        .frame(width: geometry.size.width - 6, height: Double(state.draggingItem?.duration ?? 30) * pixels).overlay(alignment: .topLeading) { Text(date(minute).map(state.time) ?? "").font(.system(size: 11)).padding(4) }
+                        .frame(width: geometry.size.width - 6, height: Double(state.draggingItem?.duration ?? 30) * pixels)
+                        .overlay(alignment: .topLeading) {
+                            let time = date(minute).map(state.time) ?? ""
+                            let repeatMove = state.draggingItem.flatMap(state.recurringMoveLabel)
+                            Text(repeatMove.map { time + " · " + $0 } ?? time).font(.system(size: 11)).lineLimit(2).padding(4)
+                        }
                         .offset(x: 3, y: Double(minute - Int(startMinute)) * pixels).allowsHitTesting(false)
                 }
                 TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -391,7 +405,11 @@ struct CalendarEvent: View {
             .foregroundStyle(emphasized ? emphasizedText : item.completed ? Color.secondary : Color.primary)
             .background(Color(hex: state.color(item)).opacity(emphasized ? 1 : item.completed ? 0.18 : 0.44), in: RoundedRectangle(cornerRadius: 4))
             .background { if overBackground { RoundedRectangle(cornerRadius: 4).fill(Palette.canvas) } }
-            .overlay { RoundedRectangle(cornerRadius: 4).stroke(Color(hex: state.color(item)).opacity(state.selectedID == item.id ? 1 : 0.6), lineWidth: 1) }
+            .overlay {
+                RoundedRectangle(cornerRadius: 4).stroke(Color(hex: state.color(item)).opacity(state.selectedID == item.id ? 1 : 0.65),
+                    style: StrokeStyle(lineWidth: 1, dash: state.isProjectedOccurrence(item) ? [3, 2] : []))
+                    .allowsHitTesting(false)
+            }
             .contentShape(Rectangle()).onTapGesture { state.selectCalendar(item.id) }
             .onDrag { state.beginDrag(item, offset: Int((pointerY / pixelsPerMinute / 15).rounded(.down)) * 15) }
             .popover(isPresented: Binding(get: { state.calendarEditingID == item.id }, set: { if !$0 { state.calendarEditingID = nil } })) {
@@ -404,7 +422,8 @@ struct CalendarEvent: View {
             .zIndex(resizeEdge == nil ? 0 : 20)
             .onHover { hovered = $0 }
             .onContinuousHover { phase in if case .active(let point) = phase { pointerY = point.y } }
-            .help("\(item.title) · \(state.durationLabel(item.duration))\nПотяните край для изменения длительности")
+            .help("\(item.title) · \(state.durationLabel(item.duration))\n" + (state.isProjectedOccurrence(item) ? "Будущий повтор. Перенос изменит только этот повтор." : "Потяните край для изменения длительности"))
+            .accessibilityHint(state.isProjectedOccurrence(item) ? "Будущий повтор" : "")
             .contextMenu { ItemContextMenu(state: state, item: item) }
     }
     private var checkbox: some View {
@@ -437,6 +456,8 @@ struct PlanningQueue: View {
     @Bindable var state: AppState
     @ViewState private var receivingDrop = false
     @ViewState private var editingID: UUID?
+    @ViewState private var saveFilterOpen = false
+    @ViewState private var filterName = ""
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -461,9 +482,12 @@ struct PlanningQueue: View {
                 Menu {
                     Picker("Сортировка", selection: $state.queueSorting) { ForEach(Sorting.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
                 } label: { Image(systemName: "arrow.up.arrow.down").font(.system(size: 14)) }.menuStyle(.borderlessButton).fixedSize().help("Сортировка: " + state.queueSorting.rawValue)
+                savedFiltersMenu
             }
             HStack {
-                Text(state.queueSorting == .manual ? "Перетащите блок на время" : "По порядку: " + state.queueSorting.rawValue.lowercased()).font(.system(size: 10)).foregroundStyle(.secondary)
+                Text(state.savedQueueFilters.first(where: state.matchesQueueFilter)?.name
+                    ?? (state.queueSorting == .manual ? "Перетащите блок на время" : "По порядку: " + state.queueSorting.rawValue.lowercased()))
+                    .font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
                 Spacer()
                 if state.queueHasFilters { Button("Сбросить") { state.resetQueueFilters() }.buttonStyle(.plain).foregroundStyle(Palette.accent).font(.system(size: 10)) }
             }
@@ -471,6 +495,13 @@ struct PlanningQueue: View {
             if state.queue.isEmpty { EmptyState(symbol: "tray", title: state.queueHasFilters ? "Нет совпадений" : "Всё распределено", detail: state.queueHasFilters ? "Измените или сбросьте фильтры." : state.queueInboxOnly ? "Перетащите сюда задачу из календаря: она попадёт во Входящие без даты и времени." : "Перетащите сюда задачу из календаря, чтобы снять время. Дата сохранится.") }
             else { ScrollView { LazyVStack(spacing: 6) { ForEach(state.queue) { item in queueCard(item) } }.padding(.vertical, 2) } }
         }.padding(14).background(Palette.sidebar)
+            .onChange(of: state.taskActionsID) { _, id in if id != nil { editingID = nil } }
+            .alert("Сохранить подборку", isPresented: $saveFilterOpen) {
+                TextField("Название", text: $filterName)
+                Button("Сохранить") { _ = state.saveQueueFilter(named: filterName) }
+                    .disabled(filterName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("Отмена", role: .cancel) {}
+            } message: { Text("Одноимённая подборка обновится.") }
             .onChange(of: state.queueInboxOnly) { _, value in if value { state.queueProjectID = nil } }
             .overlay { RoundedRectangle(cornerRadius: 8).stroke(receivingDrop ? Palette.accent.opacity(0.8) : .clear, style: StrokeStyle(lineWidth: 2, dash: [5])).padding(3).allowsHitTesting(false) }
             .onDrop(of: [.text], isTargeted: $receivingDrop) { providers in
@@ -482,6 +513,34 @@ struct PlanningQueue: View {
                 }
                 return true
             }
+    }
+    private var savedFiltersMenu: some View {
+        Menu {
+            ForEach(state.savedQueueFilters) { filter in
+                Button {
+                    state.applyQueueFilter(filter)
+                } label: {
+                    if state.matchesQueueFilter(filter) { Label(filter.name, systemImage: "checkmark") }
+                    else { Text(filter.name) }
+                }
+                    .disabled(!state.isQueueFilterAvailable(filter))
+            }
+            if !state.savedQueueFilters.isEmpty { Divider() }
+            Button("Сохранить подборку…", systemImage: "bookmark") { filterName = ""; saveFilterOpen = true }
+            if !state.savedQueueFilters.isEmpty {
+                Menu("Удалить подборку") {
+                    ForEach(state.savedQueueFilters) { filter in
+                        Button(filter.name, role: .destructive) { state.removeQueueFilter(filter.id) }
+                    }
+                }
+            }
+            Divider()
+            Button("Скопировать очередь как таблицу", systemImage: "tablecells") { state.copyTaskTable(state.queue) }
+                .disabled(state.queue.isEmpty)
+        } label: {
+            Image(systemName: state.savedQueueFilters.isEmpty ? "bookmark" : "bookmark.fill").font(.system(size: 14))
+        }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            .help("Подборки очереди").accessibilityLabel("Подборки очереди")
     }
     private func queueHelp(_ item: Item) -> String {
         let project = state.projectName(item.projectID)
@@ -561,6 +620,7 @@ struct MonthGrid: View {
                                 ForEach(items.prefix(3)) { item in
                                     HStack(spacing: 1) { CompleteButton(item: item) { state.complete(item.id) }; Text(item.title).font(.system(size: 10)).strikethrough(item.completed).foregroundStyle(item.completed ? .secondary : .primary).lineLimit(1) }
                                         .background(Color(hex: state.color(item)).opacity(item.completed ? 0.18 : 0.40), in: RoundedRectangle(cornerRadius: 3))
+                                        .modifier(ProjectedOccurrenceOutline(state: state, item: item, radius: 3))
                                         .onTapGesture { state.selectCalendar(item.id) }.onDrag { state.beginDrag(item) }
                                         .contextMenu { ItemContextMenu(state: state, item: item) }
                                         .popover(isPresented: Binding(get: { state.calendarEditingID == item.id }, set: { if !$0 { state.calendarEditingID = nil } })) {

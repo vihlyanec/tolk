@@ -43,11 +43,14 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
     var sidebarVisible = true
     var sheet: CreationKind?
     var taskCreationPresented = false
+    var taskActionsID: UUID?
+    var tableCopyReceipt: UUID?
     @ObservationIgnored var showQuick: (Date?) -> Void = { _ in }
     @ObservationIgnored var showRangeQuick: (Date, Int) -> Void = { _, _ in }
     @ObservationIgnored var showSticky: (UUID?) -> Void = { _ in }
     @ObservationIgnored var showSettings: () -> Void = {}
     @ObservationIgnored var showFocusTimer: () -> Void = {}
+    @ObservationIgnored var showMainForTaskLink: () -> Void = {}
     @ObservationIgnored var didSave: () -> Void = {}
     @ObservationIgnored var onTaskCompleted: (Preferences) -> Void = { _ in }
     @ObservationIgnored private let database: Database?
@@ -79,6 +82,9 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         catch { data = Snapshot(); database = nil; errorMessage = "Данные не открыты: \(error.localizedDescription). Запись заблокирована. База: \(dataURL.path)" }
     }
     func configureAccountFocus() {
+        pomodoro.didFinishFocus = { [weak self] completion in
+            self?.recordFocusCompletion(completion)
+        }
         if data.preferences.focusSession == nil, pomodoro.session != nil {
             let existing = pomodoro.sharedSession
             change(undo:false) { $0.preferences.focusSession = existing }
@@ -89,6 +95,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
             self.change { $0.preferences.focusSession = value }
         }
         acceptAccountFocus()
+        pomodoro.observeFocusDeadline()
     }
     func acceptAccountFocus() {
         guard let value = data.preferences.focusSession, value != appliedAccountFocus else { return }
@@ -255,10 +262,12 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         change { $0.projects[project].sections = ordered }
         return data.projects[project].sections == ordered
     }
-    @discardableResult func capture(_ parsed: ParsedTask, body: String = "", initialDate: Date? = nil) -> UUID? {
+    @discardableResult func capture(_ parsed: ParsedTask, body: String = "", initialDate: Date? = nil, defaultSection: String? = nil) -> UUID? {
         guard !parsed.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         var item = parsed.item(); item.body = body
         if item.projectID == nil, let project, project.kind == .task { item.projectID = project.id }
+        if parsed.section == nil, let defaultSection, let project, item.projectID == project.id,
+           project.sections.contains(defaultSection) { item.section = defaultSection }
         if case .tag(let id) = scope, !item.tagIDs.contains(id) { item.tagIDs.append(id) }
         if item.schedule == .unscheduled {
             if let initialDate { item.schedule = .timed(initialDate) }
@@ -704,11 +713,13 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
     static func priorityTitle(_ priority: Int) -> String { [0:"Без приоритета",1:"Высокий",2:"Средний",3:"Низкий"][priority] ?? "Без приоритета" }
     func time(_ date: Date) -> String { let f = DateFormatter(); f.timeZone = calendar.timeZone; f.dateFormat = "HH:mm"; return f.string(from: date) }
     func dayLabel(_ date: Date) -> String { let f = DateFormatter(); f.locale = Locale(identifier: "ru_RU"); f.timeZone = calendar.timeZone; f.dateFormat = "d MMM"; return f.string(from: date) }
-    func durationLabel(_ minutes: Int) -> String { minutes % 60 == 0 ? "\(minutes / 60) ч" : "\(minutes) мин" }
+    func durationLabel(_ minutes: Int) -> String { minutes > 0 && minutes % 60 == 0 ? "\(minutes / 60) ч" : "\(minutes) мин" }
 
     private static func demo() -> Snapshot {
         var s = Snapshot()
-        let work = Project(name: "Работа", color: "598BFF"), personal = Project(name: "Личное", color: "5BC9A2")
+        var work = Project(name: "Работа", color: "598BFF")
+        work.sections = ["Без раздела", "В работе", "Согласование"]
+        let personal = Project(name: "Личное", color: "5BC9A2")
         s.projects = [work, personal, Project(name: "Заметки", color: "AD94E8", kind: .note)]
         s.tags = [Tag(name: "документы"), Tag(name: "идеи", color: "E6A467")]
         let c = Dates.calendar(), day = c.startOfDay(for: Date())
@@ -718,13 +729,33 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         ] {
             var item = Item(title: title, projectID: project); item.duration = duration
             item.schedule = .timed(c.date(bySettingHour: hour, minute: 0, second: 0, of: c.date(byAdding: .day, value: offset, to: day)!)!)
+            if title == "Подготовить отчёт" {
+                item.section = "В работе"
+                item.body = "Сверить показатели и отправить черновик."
+                item.tagIDs = [s.tags[0].id]
+                s.workspaceOptions = LocalWorkspaceOptions()
+                s.workspaceOptions?.completedFocus = [
+                    FocusCompletion(taskID: item.id, finishedAt: day.addingTimeInterval(-3600)),
+                    FocusCompletion(taskID: item.id, finishedAt: day.addingTimeInterval(-1500))
+                ]
+                s.workspaceOptions?.queueFilters = [
+                    SavedQueueFilter(name: "Работа без времени", inboxOnly: false, projectID: work.id,
+                        tagID: nil, priority: nil, dateFilter: "Без времени", search: "", sorting: Sorting.manual.rawValue)
+                ]
+            }
             s.items.append(item)
         }
         for (title, minutes) in [("Набросать идеи",30), ("Обновить портфолио",90), ("Записаться к врачу",15)] {
             var item = Item(title: title, projectID: work.id); item.duration = minutes; item.tagIDs = [s.tags[1].id]; s.items.append(item)
         }
+        var repeatTask = Item(title: "Вечернее чтение", projectID: personal.id)
+        repeatTask.recurrence = .daily
+        if let start = c.date(bySettingHour: 20, minute: 0, second: 0, of: day) {
+            repeatTask.schedule = .timed(start)
+            s.items.append(repeatTask)
+        }
         var note = Item(title: "Идеи для проекта", kind: .note, projectID: s.projects[2].id)
-        note.body = "## Следующий шаг\nСобрать первые наброски.\n\n- Обсудить структуру\n- Выбрать главное"; s.items.append(note)
+        note.body = "## Следующий шаг\nСобрать первые наброски.\n\n- [ ] Обсудить структуру\n- Выбрать главное"; s.items.append(note)
         return s
     }
 }

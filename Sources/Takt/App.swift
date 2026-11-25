@@ -55,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         state.showRangeQuick = { [weak self] date, duration in self?.openQuick(date: date, duration: duration) }
         state.showSticky = { [weak self] id in self?.openSticky(id: id) }
         state.showSettings = { [weak self] in self?.openSettings() }
+        state.showMainForTaskLink = { [weak self] in self?.showMain() }
         focusEdge = FocusEdgeController(state: state, defaults: state.isDemo ? nil : .standard)
         focusPause = FocusPauseController(state: state)
         state.showFocusTimer = { [weak self] in self?.focusEdge?.show() }
@@ -97,11 +98,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         if state.isDemo {
             file.addItem(.separator())
             add("Показать тестовое уведомление", to: file, action: #selector(demoNotificationAction))
+            add("Завершить тестовый фокус через 5 секунд", to: file, action: #selector(demoFocusCompletionAction))
             add("Проверить глобальную паузу через 15 секунд", to: file, action: #selector(demoGlobalPauseAction))
         }
         let edit = NSMenu(); let editItem = NSMenuItem(title: "Правка", action: nil, keyEquivalent: ""); editItem.submenu = edit; bar.addItem(editItem)
         add("Отменить изменение записи", to: edit, action: #selector(undoAction), key: "z")
         let redo = add("Повторить изменение записи", to: edit, action: #selector(redoAction), key: "z"); redo.keyEquivalentModifierMask = [.command,.shift]
+        let actions = add("Быстрые действия задачи…", to: edit, action: #selector(taskActionsAction), key: "k")
+        actions.keyEquivalentModifierMask = [.command, .shift]
         edit.addItem(.separator())
         for (title, selector, key) in [("Вырезать", #selector(NSText.cut(_:)), "x"), ("Копировать", #selector(NSText.copy(_:)), "c"), ("Вставить", #selector(NSText.paste(_:)), "v"), ("Выделить всё", #selector(NSText.selectAll(_:)), "a")] { edit.addItem(withTitle: title, action: selector, keyEquivalent: key) }
         NSApp.mainMenu = bar
@@ -424,7 +428,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         if menuItem.action == #selector(checkUpdatesAction) {
             return state.appUpdater?.configured != true || state.appUpdater?.canCheck == true
         }
+        if menuItem.action == #selector(taskActionsAction) {
+            return NSApp.keyWindow === mainWindow && state.selectedID.flatMap(state.item).map { $0.kind == .task && !$0.deleted } == true
+        }
         return true
+    }
+    @objc private func taskActionsAction() {
+        if state.taskActionsID != nil { state.taskActionsID = nil }
+        else if let id = state.selectedID { state.showTaskActions(id) }
+    }
+    @objc private func demoFocusCompletionAction() {
+        guard state.isDemo, let task = state.selected.flatMap({ $0.isActiveTask ? $0 : nil })
+            ?? state.data.items.first(where: { $0.isActiveTask }) else { return }
+        state.pomodoro.start(task, now: Date().addingTimeInterval(5 - Double(Pomodoro.focusMinutes * 60)))
     }
     @objc private func aboutAction() { NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "Толк", .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.5", .credits: NSAttributedString(string: "Личный локальный менеджер задач")]) }
 

@@ -2,6 +2,7 @@ import Foundation
 
 /// Deadlines, rather than tick counts, preserve a session across sleep and relaunch.
 public struct Pomodoro: Codable, Equatable, Sendable {
+    public static let focusMinutes = 25
     public enum Phase: String, Codable, Sendable { case focus, shortBreak, longBreak }
     public var taskID: UUID
     public var resumeNote: String?
@@ -9,7 +10,7 @@ public struct Pomodoro: Codable, Equatable, Sendable {
     public var phase: Phase = .focus
     public var completed = 0
     public var deadline: Date?
-    public var remaining: TimeInterval = 25 * 60
+    public var remaining: TimeInterval = Double(Self.focusMinutes * 60)
     public init(taskID: UUID, title: String, now: Date = Date()) {
         self.taskID = taskID; self.title = title; deadline = now.addingTimeInterval(remaining)
     }
@@ -28,7 +29,7 @@ public struct Pomodoro: Codable, Equatable, Sendable {
         if phase == .focus {
             completed += 1; phase = completed.isMultiple(of: 4) ? .longBreak : .shortBreak
         } else { phase = .focus }
-        remaining = phase == .focus ? 1500 : phase == .longBreak ? 900 : 300
+        remaining = phase == .focus ? Double(Self.focusMinutes * 60) : phase == .longBreak ? 900 : 300
         deadline = now.addingTimeInterval(remaining)
     }
 }

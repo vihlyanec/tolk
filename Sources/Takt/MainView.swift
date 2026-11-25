@@ -36,8 +36,26 @@ struct MainView: View {
             Button("Отмена", role: .cancel) { state.pendingFocusTask = nil }
         } message: { Text("Текущий сеанс завершится. Новый начнётся с 25 минут.") }
         .modifier(ProjectDeletionPrompt(state: state))
+        .overlay(alignment: .top) {
+            if let id = state.taskActionsID {
+                TaskActionPalette(state: state, taskID: id).id(id)
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if let receipt = state.tableCopyReceipt {
+                Label("Таблица скопирована", systemImage: "checkmark")
+                    .font(.system(size: 12, weight: .medium)).padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay { RoundedRectangle(cornerRadius: 8).stroke(Palette.line) }
+                    .padding(.bottom, 14).allowsHitTesting(false)
+                    .task(id: receipt) {
+                        do { try await Task.sleep(for: .seconds(2)) } catch { return }
+                        if state.tableCopyReceipt == receipt { state.tableCopyReceipt = nil }
+                    }
+            }
+        }
         .onChange(of: state.area) { _, area in
-            state.calendarEditingID = nil; state.endDrag(); state.search = ""
+            state.calendarEditingID = nil; state.taskActionsID = nil; state.endDrag(); state.search = ""
             if area == .calendar { state.scope = .all; state.search = "" }
         }
     }
@@ -202,6 +220,12 @@ struct Sidebar: View {
 struct TaskListView: View {
     @Bindable var state: AppState
     @ViewState private var collapsed: Set<String> = []
+    @ViewState private var entrySection: String?
+    var displayGroups: [TaskGroup] {
+        let groups = state.groups
+        guard state.grouping == .section, let project = state.project, project.kind == .task else { return groups }
+        return project.sections.map { section in groups.first(where: { $0.id == section }) ?? TaskGroup(id: section, items: []) }
+    }
     var body: some View {
         GeometryReader { viewport in
             let selectedID = state.inspectorVisible ? state.selectedID : nil
@@ -223,7 +247,10 @@ struct TaskListView: View {
                     }
                 }
             }
-        }
+        }.onChange(of: state.scope) { _, _ in entrySection = nil }
+            .onReceive(Timer.publish(every: 0.12, on: .main, in: .common).autoconnect()) { _ in
+                if state.draggingID != nil && NSEvent.pressedMouseButtons == 0 { state.endDrag() }
+            }
     }
     private var taskPane: some View {
         VStack(spacing: 0) {
@@ -252,17 +279,30 @@ struct TaskListView: View {
                         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
                         .help("Порядок этапов").accessibilityLabel("Порядок этапов")
                 }
+                Menu {
+                    if state.project?.kanban != true {
+                        Button(state.compactTaskList ? "Подробный список" : "Компактный список",
+                               systemImage: "list.bullet") { state.toggleCompactTaskList() }
+                    }
+                    Button("Скопировать список как таблицу", systemImage: "tablecells") {
+                        state.copyTaskTable(state.project?.kanban == true
+                            ? state.project?.sections.flatMap { section in state.sorted(state.visibleItems.filter { $0.section == section }) } ?? []
+                            : state.groups.flatMap(\.items))
+                    }.disabled(!state.visibleItems.contains { $0.kind == .task })
+                } label: { Image(systemName: "ellipsis.circle") }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    .help("Настройки списка и копирование").accessibilityLabel("Настройки списка и копирование")
                 Text("\(state.visibleItems.count)").foregroundStyle(.secondary)
             }.padding(.horizontal, 22).padding(.bottom, 14)
             if state.area != .notes && state.scope != .trash && state.scope != .completed && state.scope != .wontDo { InlineQuickEntry(state: state) }
             Divider()
             if state.project?.kanban == true { kanban }
-            else if state.visibleItems.isEmpty {
+            else if state.visibleItems.isEmpty && displayGroups.allSatisfy({ !isProjectStage($0.id) }) {
                 EmptyState(symbol: state.area == .notes ? "note.text" : "checkmark.circle", title: "Пока пусто", detail: state.scope == .wontDo ? "Здесь остаются задачи, которые вы решили не выполнять." : state.search.isEmpty ? "Добавьте первую запись. Проекты и теги можно создать слева." : "По этому запросу ничего не найдено.")
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(state.groups) { group in
+                        ForEach(displayGroups) { group in
                             if state.grouping != .none || (state.scope == .today && group.id == "Просрочено") {
                                 HStack {
                                 Button {
@@ -273,14 +313,42 @@ struct TaskListView: View {
                                 if state.scope == .today && group.id == "Просрочено" {
                                     Button("Отложить") { state.postponeOverdueToToday() }.buttonStyle(.bordered).controlSize(.small).help("Перенести все просроченные задачи на сегодня, сохранив время")
                                 }
+                                if isProjectStage(group.id) { stageAddButton(group.id) }
                                 }.padding(.top, 22).padding(.bottom, 12)
                             }
-                            if !collapsed.contains(group.id) { ForEach(group.items) { item in TaskRow(state: state, item: item) } }
+                            if !collapsed.contains(group.id) {
+                                if isProjectStage(group.id) && entrySection == group.id { stageEntry(group.id) }
+                                ForEach(group.items) { item in TaskRow(state: state, item: item, compact: state.compactTaskList) }
+                                if group.items.isEmpty, isProjectStage(group.id), let project = state.project,
+                                   acceptsDraggedTask(in: group.id, project: project) {
+                                    SectionDropHint().dropDestination(for: String.self) { payload, _ in
+                                        guard let id = payload.first.flatMap(UUID.init(uuidString:)) else { return false }
+                                        return state.moveTask(id, toSection: group.id, in: project.id)
+                                    }
+                                }
+                            }
                         }
                     }.padding(.horizontal, 20).padding(.bottom, 24)
                 }
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+    private func isProjectStage(_ section: String) -> Bool {
+        state.grouping == .section && state.project?.kind == .task && state.project?.sections.contains(section) == true
+    }
+    private func stageAddButton(_ section: String) -> some View {
+        IconButton(symbol: "plus", help: "Добавить задачу в этап «\(section)»") {
+            collapsed.remove(section)
+            entrySection = entrySection == section ? nil : section
+        }
+    }
+    private func stageEntry(_ section: String) -> some View {
+        InlineQuickEntry(state: state, section: section, onFinish: { entrySection = nil })
+            .id(section)
+    }
+    private func acceptsDraggedTask(in section: String, project: Project) -> Bool {
+        guard let task = state.draggingItem, task.kind == .task, !task.deleted else { return false }
+        return task.projectID != project.id || task.section != section
     }
     private func listMenus(iconOnly: Bool) -> some View {
         HStack {
@@ -356,10 +424,15 @@ struct TaskListView: View {
                                     Text(section).fontWeight(.semibold).lineLimit(1)
                                     Spacer()
                                     Text("\(tasks.count)").foregroundStyle(.secondary)
+                                    stageAddButton(section)
                                 }.padding(.bottom, 6).contentShape(Rectangle())
                                     .draggable(prefix + section)
                                     .help("Перетащить этап")
                                     .contextMenu { sectionMoveActions(section, in: project) }
+                                if entrySection == section { stageEntry(section) }
+                                if tasks.isEmpty && acceptsDraggedTask(in: section, project: project) {
+                                    SectionDropHint().allowsHitTesting(false)
+                                }
                                 ScrollView(.vertical) {
                                     LazyVStack(spacing: 10) {
                                         ForEach(state.sorted(tasks)) { item in
@@ -377,8 +450,8 @@ struct TaskListView: View {
                                 if value.hasPrefix(prefix) {
                                     return state.moveSection(String(value.dropFirst(prefix.count)), to: section, in: project.id)
                                 }
-                                guard let id = UUID(uuidString: value), state.data.items.contains(where: { $0.id == id }) else { return false }
-                                state.update(id) { $0.section = section; $0.projectID = project.id }; return true
+                                guard let id = UUID(uuidString: value) else { return false }
+                                return state.moveTask(id, toSection: section, in: project.id)
                             }
                         }
                     }.padding(20)
@@ -398,10 +471,22 @@ struct TaskListView: View {
     }
 }
 
+private struct SectionDropHint: View {
+    var body: some View {
+        Label("Перетащите задачу сюда", systemImage: "arrow.down.to.line")
+            .font(.system(size: 11, weight: .medium)).foregroundStyle(Palette.accent)
+            .frame(maxWidth: .infinity, minHeight: 34)
+            .background(Palette.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+            .overlay { RoundedRectangle(cornerRadius: 6).stroke(Palette.accent, style: StrokeStyle(lineWidth: 1, dash: [4, 3])) }
+            .contentShape(Rectangle())
+    }
+}
+
 struct TaskRow: View {
     @Bindable var state: AppState
     private let seed: Item
-    init(state: AppState, item: Item) { self.state = state; self.seed = item }
+    let compact: Bool
+    init(state: AppState, item: Item, compact: Bool = false) { self.state = state; self.seed = item; self.compact = compact }
     // Observe the live record at the row boundary, rather than retain a group snapshot.
     var item: Item { state.data.items.first { $0.id == seed.id } ?? seed }
     private var reminderCount: Int {
@@ -409,18 +494,18 @@ struct TaskRow: View {
         return item.schedule.isTimed ? NotificationPlan.timedOffsets(item: item, preferences: state.data.preferences).count : NotificationPlan.allDayRules(item: item, preferences: state.data.preferences).count
     }
     var body: some View {
-        HStack(alignment: .top, spacing: 9) {
+        HStack(alignment: compact ? .center : .top, spacing: 9) {
             if item.wontDoAt != nil { IconButton(symbol: "arrow.uturn.backward", help: "Вернуть в работу") { state.toggleWontDo(item.id) }.disabled(item.deleted) }
             else if item.kind == .task { CompleteButton(item: item) { state.complete(item.id) } }
             else { Image(systemName: "note.text").foregroundStyle(.secondary).frame(width: 23) }
             VStack(alignment: .leading, spacing: 5) {
-                Text(item.title.isEmpty ? "Без названия" : item.title).strikethrough(item.completed).lineLimit(2)
-                Metadata(state: state, item: item)
-                if !item.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(item.title.isEmpty ? "Без названия" : item.title).strikethrough(item.completed).lineLimit(compact ? 1 : 2)
+                if !compact { Metadata(state: state, item: item) }
+                if !compact && !item.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text(item.body.split(whereSeparator: \.isNewline).first.map(String.init) ?? "")
                         .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }
-                if !item.checklist.isEmpty || item.recurrence != .none || reminderCount > 0 {
+                if !compact && (!item.checklist.isEmpty || item.recurrence != .none || reminderCount > 0) {
                     MetadataFlow(spacing: 10) {
                         if !item.checklist.isEmpty { Label("\(item.checklist.filter(\.done).count)/\(item.checklist.count)", systemImage: "checklist").help("Выполнено пунктов чек-листа") }
                         if item.recurrence != .none { Label(item.recurrenceLabel, systemImage: "repeat") }
@@ -429,17 +514,20 @@ struct TaskRow: View {
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
             VStack(alignment: .trailing, spacing: 5) {
-            if let date = item.schedule.date {
+                if compact, let date = item.schedule.date {
+                    Text(state.dayLabel(date) + (item.schedule.isTimed ? " · " + state.time(date) : ""))
+                        .font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary)
+                } else if let date = item.schedule.date {
                 Text(state.dayLabel(date)).font(.system(size: 10)).foregroundStyle(.secondary)
                 if item.schedule.isTimed { Text(state.time(date) + (item.end.map { "–" + state.time($0) } ?? "")).font(.system(size: 11, weight: .medium)).foregroundStyle(Palette.accent) }
             }
-            if item.kind == .task { Label(state.durationLabel(item.duration), systemImage: "clock").font(.system(size: 10)).foregroundStyle(.secondary) }
+                if !compact && item.kind == .task { Label(state.durationLabel(item.duration), systemImage: "clock").font(.system(size: 10)).foregroundStyle(.secondary) }
             }.fixedSize(horizontal: true, vertical: false)
-        }.padding(.horizontal, 9).padding(.vertical, 12).contentShape(Rectangle())
+        }.padding(.horizontal, 9).padding(.vertical, compact ? 5 : 12).contentShape(Rectangle())
             .background(state.selectedID == item.id ? Palette.accent.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 5))
             .overlay(alignment: .bottom) { Rectangle().fill(Palette.line).frame(height: 0.5) }
             .onTapGesture { state.select(item.id) }
-            .draggable(item.id.uuidString)
+            .onDrag { state.beginDrag(item) }
             .dropDestination(for: String.self) { strings, _ in
                 guard state.sorting == .manual, let id = strings.first.flatMap(UUID.init(uuidString:)),
                       let source = state.data.items.first(where: { $0.id == id }), source.kind == item.kind else { return false }
@@ -455,6 +543,7 @@ struct ItemContextMenu: View {
     var body: some View {
         if item.deleted { Button("Восстановить") { state.update(item.id) { $0.deleted = false } } }
         else {
+            if item.kind == .task { Button("Быстрые действия…") { state.showTaskActions(item.id) } }
             if item.isActiveTask { Button("Начать фокус") { state.startFocus(item) } }
             if item.kind == .task && !item.completed {
                 Button(item.wontDoAt == nil ? "Не буду выполнять" : "Вернуть в работу") { state.toggleWontDo(item.id) }

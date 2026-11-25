@@ -6,9 +6,11 @@ import Testing
 @MainActor private final class NoteMessages: NSObject, WKScriptMessageHandler {
     var ready = false
     var tagCommits = 0
+    var conversion: [String: String]?
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         if (message.body as? [String: String])?["type"] == "ready" { ready = true }
         if (message.body as? [String: String])?["type"] == "commitTags" { tagCommits += 1 }
+        if let value = message.body as? [String: String], value["type"] == "convertTask" { conversion = value }
     }
 }
 @Test @MainActor func richNotesRenderEditAndRoundTripMarkdownInOneDocument() async throws {
@@ -41,5 +43,37 @@ import Testing
     _ = try await web.callAsyncJavaScript("window.setNote('<p>#конечный </p>');document.getElementById('editor').dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:' '}));return window.noteMarkdown()", arguments: [:], in: nil, contentWorld: .page)
     for _ in 0..<20 where messages.tagCommits == 0 { try await Task.sleep(for: .milliseconds(20)) }
     #expect(messages.tagCommits > 0)
+    _ = try await web.callAsyncJavaScript("""
+        window.setNote('<p>Первый</p><div class="task">☐ <span>Позвонить</span></div><div class="task">☐ <span>Позвонить</span></div>');
+        const cursor = document.createRange(), selection = getSelection();
+        cursor.selectNodeContents(document.querySelectorAll('.task span')[1]); cursor.collapse(true);
+        document.getElementById('editor').focus(); selection.removeAllRanges(); selection.addRange(cursor);
+        window.convertTaskLine();
+        """, arguments: [:], in: nil, contentWorld: .page)
+    for _ in 0..<30 where messages.conversion == nil { try await Task.sleep(for: .milliseconds(20)) }
+    #expect(messages.conversion?["line"] == "- [ ] Позвонить")
+    #expect(messages.conversion?["occurrence"] == "1")
+    #expect(messages.conversion?["title"] == "Позвонить")
 
+    messages.conversion = nil
+    _ = try await web.callAsyncJavaScript("""
+        window.setNote('<p>Позвонить <strong>в сервис завтра</strong> и записать ответ</p>');
+        const cursor = document.createRange(), selection = getSelection();
+        const line = document.querySelector('#editor p'), text = line.querySelector('strong').firstChild;
+        cursor.setStart(text, 'в сервис'.length); cursor.collapse(true);
+        document.getElementById('editor').focus(); selection.removeAllRanges(); selection.addRange(cursor);
+        line.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', metaKey:true, shiftKey:true, bubbles:true, cancelable:true}));
+        """, arguments: [:], in: nil, contentWorld: .page)
+    for _ in 0..<30 where messages.conversion == nil { try await Task.sleep(for: .milliseconds(20)) }
+    #expect(messages.conversion?["title"] == "Позвонить в сервис")
+    #expect(messages.conversion?["line"] == "Позвонить **в сервис завтра** и записать ответ")
+    #expect(messages.conversion?["suffix"] == " **завтра** и записать ответ")
+
+    let taskUUID = UUID().uuidString.lowercased()
+    let restored = try await web.callAsyncJavaScript("""
+        window.setNote('<p><a class="linked-task" href="tolk-task://item/'+taskID+'">Позвонить</a> завтра</p>', taskID);
+        const selection=getSelection(), link=document.querySelector('a');
+        return selection.isCollapsed && selection.anchorNode===link.parentNode && selection.anchorOffset===1;
+        """, arguments: ["taskID": taskUUID], in: nil, contentWorld: .page) as? Bool
+    #expect(restored == true)
 }

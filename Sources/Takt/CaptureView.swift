@@ -174,6 +174,8 @@ struct DurationControl: View {
 
 struct InlineQuickEntry: View {
     @Bindable var state: AppState
+    var section: String?
+    var onFinish: (() -> Void)?
     @ViewState private var text = ""
     @ViewState private var minutes: Int?
     @ViewState private var literals: [QuickLiteralToken] = []
@@ -207,13 +209,15 @@ struct InlineQuickEntry: View {
             HStack(spacing: 10) {
                 Image(systemName: "plus.circle").foregroundStyle(Palette.accent)
                 SmartCaptureInput(text: $text, literals: $literals, parsed: parsed, projects: state.activeProjects, tags: state.data.tags,
-                                  placeholder: "Добавить задачу…  /проект/этап   #тег   !приоритет", fontSize: 13, focusRequest: titleFocus, singleLine: true, calendar: state.calendar,
+                                  placeholder: section != nil ? "Название задачи" : state.scope == .today ? "Добавить на сегодня…" : "Добавить задачу…  /проект/этап   #тег   !приоритет",
+                                  fontSize: 13, focusRequest: titleFocus, singleLine: true, calendar: state.calendar,
                                   onFocus: { focused = $0 }, expandDescription: openDescription, submit: submit,
                                   move: { direction in guard !choices.isEmpty else { return false }; selectedSuggestion = (selectedSuggestion + direction + choices.count) % choices.count; return true })
                     .frame(height: 32)
                     .onChange(of: text) { _, _ in selectedSuggestion = 0 }
-                DurationControl(minutes: Binding(get: { parsed.duration }, set: { minutes = $0 }))
+                if section == nil { DurationControl(minutes: Binding(get: { parsed.duration }, set: { minutes = $0 })) }
                 Button(action: save) { Image(systemName: "return").frame(width: 24, height: 24) }.buttonStyle(.plain).disabled(parsed.title.isEmpty).help("Добавить задачу")
+                if let onFinish { IconButton(symbol: "xmark", help: "Закрыть добавление", action: onFinish) }
             }.padding(.horizontal, 12).padding(.vertical, 8).background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 7))
                 .overlay { RoundedRectangle(cornerRadius: 7).stroke(focused ? Palette.accent.opacity(0.6) : Palette.line, lineWidth: 1) }
             if focused && !choices.isEmpty {
@@ -236,7 +240,8 @@ struct InlineQuickEntry: View {
                 CaptureDescriptionView(text: $description, tags: state.data.tags, focusRequest: descriptionFocus, horizontalInset: 12, save: save)
                     .background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 7))
             }
-        }.padding(.horizontal, 22).padding(.bottom, 14)
+        }.padding(.horizontal, section == nil ? 22 : 0).padding(.bottom, section == nil ? 14 : 5)
+            .onAppear { if section != nil { titleFocus = UUID() } }
     }
     private func openDescription() { descriptionExpanded = true; focused = false; descriptionFocus = UUID() }
     private func setText(_ value: String) { literals = QuickLiteralToken.rebased(literals, from: text, to: value); text = value }
@@ -253,8 +258,9 @@ struct InlineQuickEntry: View {
     }
     private func save() {
         guard !parsed.title.isEmpty else { titleFocus = UUID(); return }
-        guard state.capture(parsed, body: description) != nil else { return }
+        guard state.capture(parsed, body: description, defaultSection: section) != nil else { return }
         text = ""; literals = []; minutes = nil; description = ""; descriptionExpanded = false; descriptionFocus = nil; titleFocus = UUID(); focused = true
+        onFinish?()
     }
 }
 
@@ -285,14 +291,22 @@ struct StickyView: View {
                                     }
                                 }
                                 Button("Жирный") { action = EditorAction(before: "**", after: "**") }
+                                if item.kind == .note {
+                                    Button("Создать задачу из строки") { action = EditorAction(before: "convert-task", after: "") }
+                                }
                                 Divider(); Button("Скрыть заметку", action: close)
                             } label: { Image(systemName: "ellipsis").frame(width: 24, height: 24).contentShape(Rectangle()) }
                                 .menuStyle(.borderlessButton).fixedSize().help("Действия с заметкой")
                         }
                         if !state.tagIDs(for: item).isEmpty { FlowTags(state: state, item: item) }
-                        RichNoteEditor(text: Binding(get: { item.body }, set: { text in state.update(id) { $0.body = text } }), action: action, tags: state.data.tags, commitTags: { state.commitHashtags(id) })
+                        RichNoteEditor(text: Binding(get: { self.item?.body ?? "" }, set: { text in state.update(id) { $0.body = text } }),
+                                       action: action, tags: state.data.tags, commitTags: { state.commitHashtags(id) },
+                                       convertLine: { line, occurrence, title, done, suffix in
+                                           state.createTaskFromNoteLine(noteID: id, sourceLine: line, occurrence: occurrence, title: title, completed: done, suffix: suffix)
+                                       }, openLinkedTask: state.openLinkedTask,
+                                       conversionUnavailable: { state.errorMessage = "Поставьте курсор после текста задачи в заметке." })
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        if state.errorMessage != nil { Text("Не удалось сохранить заметку").font(.system(size: 11)).foregroundStyle(.red) }
+                        if let error = state.errorMessage { Text(error).font(.system(size: 11)).foregroundStyle(.red) }
                     }.padding(.horizontal, 12).padding(.bottom, 12)
                 }
             }.background(Color(hex: item.stickyColor).opacity(0.13)).background(Palette.sidebar)
