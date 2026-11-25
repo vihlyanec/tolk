@@ -17,7 +17,7 @@ struct ShortcutSettingsView: View {
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Section("Заметки и задачи") {
-                shortcut("Создать задачу из текста до курсора", "⇧⌘↩")
+                shortcut("Создать задачу из выделения или текста до курсора", "⇧⌘↩")
                 shortcut("Быстрые действия выбранной задачи", "⇧⌘K")
                 shortcut("Открыть быстрый ввод", "⌘N")
                 shortcut("Создать заметку-стикер", "⌘D")

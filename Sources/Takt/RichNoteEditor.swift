@@ -4,14 +4,12 @@ import TaktCore
 
 /// A single editable document. Markdown remains the portable, backwards-compatible source.
 struct RichNoteEditor: NSViewRepresentable {
-    @Binding var text: String
+    let state: AppState
+    let id: UUID
     var action: EditorAction?
     var tags: [Tag] = []
     var editable = true
-    var commitTags: () -> Void = {}
-    var convertLine: ((String, Int, String, Bool, String) -> UUID?)?
-    var openLinkedTask: ((UUID) -> Void)?
-    var conversionUnavailable: () -> Void = {}
+    var convertsTasks = true
     @Environment(\.colorScheme) private var scheme
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeNSView(context: Context) -> WKWebView {
@@ -27,10 +25,13 @@ struct RichNoteEditor: NSViewRepresentable {
     }
     static func dismantleNSView(_ web: WKWebView, coordinator: Coordinator) {
         web.configuration.userContentController.removeScriptMessageHandler(forName: "note")
+        let state = coordinator.parent.state, id = coordinator.parent.id
+        Task { @MainActor in state.flushDocumentBody(id, finalizeTags: true) }
     }
     func updateNSView(_ web: WKWebView, context: Context) {
         let coordinator = context.coordinator
         coordinator.parent = self
+        let text = state.documentBody(id)
         if !coordinator.loaded {
             coordinator.loaded = true; coordinator.lastText = text
             var html = MarkdownHTML.document(text, dark: scheme == .dark)
@@ -45,8 +46,7 @@ struct RichNoteEditor: NSViewRepresentable {
             web.callAsyncJavaScript("window.setNote(html, converted)", arguments: ["html": MarkdownHTML.body(text), "converted": converted], in: nil, in: .page) { _ in }
         }
         if coordinator.ready {
-            let dark = scheme == .dark
-            web.callAsyncJavaScript("window.noteConfig(tags, editable, dark)", arguments: ["tags": tags.map { ["name": $0.name, "color": SemanticTint.vibrantHex($0.color)] }, "editable": editable, "dark": dark], in: nil, in: .page) { _ in }
+            coordinator.configure(web)
             if let action, action.id != coordinator.lastAction {
                 coordinator.lastAction = action.id
                 if action.before == "convert-task" {
@@ -63,36 +63,54 @@ struct RichNoteEditor: NSViewRepresentable {
         var lastText = ""
         var lastAction: UUID?
         var convertedTaskID: UUID?
+        private struct Configuration: Equatable {
+            let tags: [Tag]
+            let editable: Bool
+            let dark: Bool
+            let convertsTasks: Bool
+        }
+        private var configuration: Configuration?
         init(_ parent: RichNoteEditor) { self.parent = parent }
+        func configure(_ web: WKWebView?) {
+            let next = Configuration(tags: parent.tags, editable: parent.editable,
+                                     dark: parent.scheme == .dark, convertsTasks: parent.convertsTasks)
+            guard next != configuration, let web else { return }
+            configuration = next
+            web.callAsyncJavaScript("window.noteConfig(tags, editable, dark, convertsTasks)", arguments: [
+                "tags": next.tags.map { ["name": $0.name, "color": SemanticTint.vibrantHex($0.color)] },
+                "editable": next.editable, "dark": next.dark, "convertsTasks": next.convertsTasks
+            ], in: nil, in: .page) { _ in }
+        }
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             guard let value = message.body as? [String: String] else { return }
-            if value["type"] == "ready" { ready = true; parent.updateConfiguration(message.webView); return }
-            if value["type"] == "change", let text = value["text"], text != lastText {
-                lastText = text; parent.text = text
+            if value["type"] == "ready" { ready = true; configure(message.webView); return }
+            if value["type"] == "change", parent.editable, let text = value["text"], text != lastText {
+                lastText = text; parent.state.queueDocumentBody(text, for: parent.id)
             }
-            if value["type"] == "commitTags" { parent.commitTags() }
-            if value["type"] == "convertTask", parent.editable, let line = value["line"], let title = value["title"],
+            if value["type"] == "commitTags", parent.editable { parent.state.flushDocumentBody(parent.id, finalizeTags: true) }
+            if value["type"] == "convertTask", parent.editable, parent.convertsTasks, let line = value["line"], let title = value["title"],
                let occurrence = value["occurrence"].flatMap(Int.init) {
-                if let id = parent.convertLine?(line, occurrence, title, value["completed"] == "true", value["suffix"] ?? "") {
+                if let id = parent.state.createTaskFromNoteLine(noteID: parent.id, sourceLine: line, occurrence: occurrence,
+                    title: title, completed: value["completed"] == "true", suffix: value["suffix"] ?? "",
+                    leading: value["leading"] ?? "", replacesSelection: value["selection"] == "true") {
                     convertedTaskID = id
                 }
             }
-            if value["type"] == "convertUnavailable", parent.editable { parent.conversionUnavailable() }
+            if value["type"] == "convertUnavailable", parent.editable {
+                parent.state.errorMessage = "Выделите текст внутри строки или поставьте курсор после названия задачи."
+            }
             if value["type"] == "link", let raw = value["url"] {
-                if let id = MarkdownHTML.linkedTaskID(raw) { parent.openLinkedTask?(id) }
+                if let id = MarkdownHTML.linkedTaskID(raw) { parent.state.openLinkedTask(id) }
                 else if let url = MarkdownHTML.safeURL(raw) { NSWorkspace.shared.open(url) }
             }
         }
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
             if action.navigationType == .linkActivated, let url = action.request.url {
-                if let id = MarkdownHTML.linkedTaskID(url.absoluteString) { parent.openLinkedTask?(id) }
+                if let id = MarkdownHTML.linkedTaskID(url.absoluteString) { parent.state.openLinkedTask(id) }
                 else if MarkdownHTML.safeURL(url.absoluteString) != nil { NSWorkspace.shared.open(url) }
             }
             decisionHandler(action.request.url?.scheme == "about" ? .allow : .cancel)
         }
-    }
-    private func updateConfiguration(_ web: WKWebView?) {
-        web?.callAsyncJavaScript("window.noteConfig(tags, editable, dark)", arguments: ["tags": tags.map { ["name": $0.name, "color": SemanticTint.vibrantHex($0.color)] }, "editable": editable, "dark": scheme == .dark], in: nil, in: .page) { _ in }
     }
     private static let styles = """
     :root{--ink:#232326;--link:#295cd1;--line:#8885} @media(prefers-color-scheme:dark){:root{--ink:#e5e5e7;--link:#82a8ff}}body{color:var(--ink)}a{color:var(--link)}#editor{min-height:calc(100vh - 40px);outline:none;caret-color:var(--ink)}#editor:empty:before{content:'Начните писать…';color:#888;pointer-events:none}#editor:focus{outline:none}#suggestions{display:none;position:fixed;z-index:5;max-height:180px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:4px;background:Canvas;color:CanvasText;box-shadow:0 8px 24px #0003}#suggestions button{display:block;text-align:left;border:0;background:none;color:inherit;padding:6px 12px;width:100%;font:inherit}#suggestions button.selected{background:#598bff30;border-radius:4px}input[type=checkbox]{accent-color:#598bff}li{margin:4px 0}pre{white-space:pre-wrap}td,th{min-width:70px}.task{display:block}.task input{margin-right:8px}
@@ -101,7 +119,8 @@ struct RichNoteEditor: NSViewRepresentable {
     static let script = #"""
     (()=>{
       const editor=document.getElementById('editor'), menu=document.getElementById('suggestions');
-      let savedRange=null,tags=[],choices=[],choice=0,tagRange=null,composing=false,conversionBlock=null;
+      let savedRange=null,tags=[],choices=[],choice=0,tagRange=null,composing=false,conversionBlock=null,convertsTasks=true;
+      let changeQueued=false,lastSent=null;
       const send=(type,data={})=>window.webkit.messageHandlers.note.postMessage({type,...data});
       const escape=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
       function serialize(node){
@@ -143,11 +162,21 @@ struct RichNoteEditor: NSViewRepresentable {
         return children();
       }
       const markdown=()=>serialize(editor).replace(/\n{3,}/g,'\n\n').replace(/\n+$/,'');
-      function changed(){send('change',{text:markdown()});}
+      function sendChange(){
+        if(!changeQueued)return;
+        changeQueued=false;
+        const text=markdown();
+        if(text!==lastSent){lastSent=text;send('change',{text});}
+      }
+      function changed(){
+        if(changeQueued)return;
+        changeQueued=true;queueMicrotask(sendChange);
+      }
       function restore(){const current=getSelection();if(current.rangeCount&&editor.contains(current.anchorNode))savedRange=current.getRangeAt(0).cloneRange();editor.focus();const s=getSelection();if(savedRange&&editor.contains(savedRange.commonAncestorContainer)){s.removeAllRanges();s.addRange(savedRange);}else{const r=document.createRange();r.selectNodeContents(editor);r.collapse(false);s.removeAllRanges();s.addRange(r);}}
       document.addEventListener('selectionchange',()=>{const s=getSelection();if(s.rangeCount&&editor.contains(s.anchorNode))savedRange=s.getRangeAt(0).cloneRange();});
       function normalize(){editor.querySelectorAll('.task').forEach(row=>{if(row.querySelector('input'))return;const box=document.createElement('input');box.type='checkbox';box.checked=row.textContent.startsWith('☑');box.setAttribute('aria-label','Выполнить пункт');if(row.firstChild?.nodeType===3)row.firstChild.remove();row.prepend(box);});}
       window.setNote=(html,converted)=>{
+        changeQueued=false;lastSent=null;
         editor.innerHTML=html;normalize();savedRange=null;
         if(!converted)return;
         const link=Array.from(editor.querySelectorAll('a.linked-task')).find(node=>node.getAttribute('href')==='tolk-task://item/'+converted);
@@ -158,45 +187,72 @@ struct RichNoteEditor: NSViewRepresentable {
         const selection=getSelection();selection.removeAllRanges();selection.addRange(range);savedRange=range;
       };
       const lineKey=text=>text.trim().replace(/^(?:[-*+]|\d+[.)])\s+/,'').replace(/^\[X\]/,'[x]');
+      const plainText=text=>text.replace(/\u200b/g,'').replace(/\u00a0/g,' ');
+      function edgeMarkdown(range, atStart){
+        const fragment=range.cloneContents(), walker=document.createTreeWalker(fragment,NodeFilter.SHOW_TEXT);
+        const nodes=[];
+        while(walker.nextNode())nodes.push(walker.currentNode);
+        if(!atStart)nodes.reverse();
+        let gap='';
+        for(const node of nodes){
+          const space=node.data.match(atStart?/^[ \t\u00a0\u200b]+/:/[ \t\u00a0\u200b]+$/)?.[0]??'';
+          gap=atStart?gap+plainText(space):plainText(space)+gap;
+          node.deleteData(atStart?0:node.length-space.length,space.length);
+          if(node.length)break;
+        }
+        for(const inline of Array.from(fragment.querySelectorAll('b,strong,em,i,del,s,strike,code,a')).reverse()){
+          if(!inline.textContent&&!inline.querySelector('img,br'))inline.remove();
+        }
+        const text=Array.from(fragment.childNodes).map(serialize).join('');
+        return atStart?gap+text:text+gap;
+      }
       window.convertTaskLine=(toCaret=false)=>{
+        sendChange();
         restore();
         const selected=getSelection();
+        if(!selected.rangeCount)return;
+        const range=selected.getRangeAt(0);
+        const selection=toCaret&&!range.collapsed;
         const parent=node=>node?.nodeType===1?node:node?.parentElement;
         const blockAt=node=>node?.nodeType===3&&node.parentNode===editor?node:parent(node)?.closest('.task,.list,p,li,div');
-        const block=blockAt(selected.anchorNode);
-        if(!block||!editor.contains(block)||block!==blockAt(selected.focusNode)||parent(block)?.closest('table,pre,blockquote')||block.querySelector?.('a.linked-task')||(toCaret&&!selected.isCollapsed)){
+        const block=blockAt(range.startContainer);
+        if(!block||!editor.contains(block)||block!==blockAt(range.endContainer)||parent(block)?.closest('table,pre,blockquote')){
           send('convertUnavailable');return;
         }
         const line=serialize(block).trim();
         const content=block.matches?.('.list,.task')?block.querySelector('span:not(.marker)'):block;
-        let title=(content?.innerText??content?.textContent??'').trim(),suffix='';
-        if(toCaret&&content&&(selected.anchorNode===content||content.contains(selected.anchorNode))){
+        if(!content||!content.contains(range.startContainer)||!content.contains(range.endContainer)){
+          send('convertUnavailable');return;
+        }
+        const taskText=document.createRange();
+        taskText.selectNodeContents(content);
+        if(toCaret)taskText.setEnd(range.endContainer,range.endOffset);
+        if(selection)taskText.setStart(range.startContainer,range.startOffset);
+        const linkedTasks=Array.from(content.querySelectorAll?.('a.linked-task')??[]);
+        if(linkedTasks.some(link=>taskText.intersectsNode(link))){send('convertUnavailable');return;}
+        const rawTitle=plainText(taskText.toString());
+        const title=rawTitle.trim();
+        if(!title||/[\r\n]/.test(title)||/[\r\n]/.test(line)) {send('convertUnavailable');return;}
+        let leading='',suffix='';
+        if(toCaret){
           const before=document.createRange(),after=document.createRange();
           before.selectNodeContents(content);after.selectNodeContents(content);
-          before.setEnd(selected.anchorNode,selected.anchorOffset);after.setStart(selected.anchorNode,selected.anchorOffset);
-          const prefix=before.toString().replace(/\u200b/g,'').replace(/\u00a0/g,' ');
-          title=prefix.trim();
-          const remainder=after.cloneContents(), textNodes=document.createTreeWalker(remainder,NodeFilter.SHOW_TEXT);
-          let gap=prefix.match(/[ \t]+$/)?.[0]??'';
-          while(textNodes.nextNode()){
-            const node=textNodes.currentNode, space=node.data.match(/^[ \t\u00a0\u200b]+/)?.[0]??'';
-            gap+=space.replace(/\u00a0/g,' ').replace(/\u200b/g,'');
-            node.deleteData(0,space.length);
-            if(node.length)break;
-          }
-          for(const inline of Array.from(remainder.querySelectorAll('b,strong,em,i,del,s,strike,code,a')).reverse()){
-            if(!inline.textContent&&!inline.querySelector('img,br'))inline.remove();
-          }
-          if(remainder.textContent||remainder.querySelector('img'))suffix=gap+Array.from(remainder.childNodes).map(serialize).join('');
-        }else if(toCaret){send('convertUnavailable');return;}
-        if(!title||/[\r\n]/.test(title)||/[\r\n]/.test(line)) {send('convertUnavailable');return;}
+          before.setEnd(taskText.startContainer,taskText.startOffset);
+          after.setStart(taskText.endContainer,taskText.endOffset);
+          leading=selection?edgeMarkdown(before,false)+(rawTitle.match(/^[ \t]+/)?.[0]??''):'';
+          if(!after.collapsed)suffix=(rawTitle.match(/[ \t]+$/)?.[0]??'')+edgeMarkdown(after,true);
+        }
         conversionBlock=block;
         const preceding=markdown().split(String.fromCharCode(0))[0];
         conversionBlock=null;
         const occurrence=preceding.split('\n').filter(value=>lineKey(value)===lineKey(line)).length;
-        send('convertTask',{line,title,suffix,occurrence:String(occurrence),completed:String(block.querySelector?.('input')?.checked===true)});
+        send('convertTask',{line,title,leading,suffix,selection:String(selection),occurrence:String(occurrence),completed:String(block.querySelector?.('input')?.checked===true)});
       };
-      window.noteConfig=(newTags,editable,dark)=>{tags=newTags;editor.contentEditable=String(editable);document.documentElement.style.colorScheme=dark?'dark':'light';document.documentElement.style.setProperty('--ink',dark?'#e5e5e7':'#232326');document.documentElement.style.setProperty('--link',dark?'#82a8ff':'#295cd1');};
+      window.noteConfig=(newTags,editable,dark,canConvert=true)=>{
+        tags=newTags;convertsTasks=canConvert;
+        if(editor.contentEditable!==String(editable))editor.contentEditable=String(editable);
+        document.documentElement.style.colorScheme=dark?'dark':'light';document.documentElement.style.setProperty('--ink',dark?'#e5e5e7':'#232326');document.documentElement.style.setProperty('--link',dark?'#82a8ff':'#295cd1');
+      };
       window.formatNote=(before,after)=>{
         restore();const selection=getSelection(), selected=selection.toString();
         if(before==='**')document.execCommand('bold');
@@ -235,13 +291,13 @@ struct RichNoteEditor: NSViewRepresentable {
         document.execCommand('insertHTML',false,html+(match[6]?'&nbsp;':'&#8203;'));
       }
       editor.addEventListener('compositionstart',()=>composing=true);editor.addEventListener('compositionend',()=>{composing=false;changed();suggest();});
-      editor.addEventListener('input',e=>{if(composing)return;inlineTyping();changed();if(e.data===' '||e.inputType==='insertParagraph'||e.inputType==='insertLineBreak')send('commitTags');suggest();});
-      editor.addEventListener('blur',()=>send('commitTags'));
+      editor.addEventListener('input',e=>{if(composing)return;if(!e.data||/[*~`\s]/.test(e.data))inlineTyping();changed();suggest();});
+      editor.addEventListener('blur',()=>{sendChange();send('commitTags');});
       editor.addEventListener('change',e=>{if(e.target.type==='checkbox'){e.target.toggleAttribute('checked',e.target.checked);const span=e.target.parentElement.querySelector('span');span?.classList.toggle('done',e.target.checked);changed();}});
       editor.addEventListener('paste',e=>{e.preventDefault();document.execCommand('insertText',false,e.clipboardData.getData('text/plain'));});
       editor.addEventListener('click',e=>{const link=e.target.closest('a');if(link&&!e.altKey){e.preventDefault();send('link',{url:link.href});}});
       editor.addEventListener('keydown',e=>{
-        if(e.key==='Enter'&&e.metaKey&&e.shiftKey&&!e.ctrlKey&&!e.altKey&&editor.isContentEditable&&!e.isComposing&&!composing){
+        if(e.key==='Enter'&&e.metaKey&&e.shiftKey&&!e.ctrlKey&&!e.altKey&&convertsTasks&&editor.isContentEditable&&!e.isComposing&&!composing){
           e.preventDefault();if(!e.repeat){hideTags();window.convertTaskLine(true);}return;
         }
         if(choices.length){if(['ArrowDown','ArrowUp'].includes(e.key)){e.preventDefault();choice=(choice+(e.key==='ArrowDown'?1:-1)+choices.length)%choices.length;Array.from(menu.children).forEach((b,i)=>b.className=i===choice?'selected':'');return;}if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();acceptTag(choice);return;}if(e.key==='Escape'){e.preventDefault();hideTags();return;}}

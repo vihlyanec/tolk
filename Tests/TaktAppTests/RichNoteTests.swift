@@ -41,8 +41,10 @@ import Testing
     #expect(typed?["html"]?.contains("<strong>") == true)
 
     _ = try await web.callAsyncJavaScript("window.setNote('<p>#конечный </p>');document.getElementById('editor').dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:' '}));return window.noteMarkdown()", arguments: [:], in: nil, contentWorld: .page)
-    for _ in 0..<20 where messages.tagCommits == 0 { try await Task.sleep(for: .milliseconds(20)) }
-    #expect(messages.tagCommits > 0)
+    #expect(messages.tagCommits == 0)
+    _ = try await web.callAsyncJavaScript("document.getElementById('editor').dispatchEvent(new Event('blur'))", arguments: [:], in: nil, contentWorld: .page)
+    for _ in 0..<100 where messages.tagCommits == 0 { try await Task.sleep(for: .milliseconds(20)) }
+    #expect(messages.tagCommits == 1)
     _ = try await web.callAsyncJavaScript("""
         window.setNote('<p>Первый</p><div class="task">☐ <span>Позвонить</span></div><div class="task">☐ <span>Позвонить</span></div>');
         const cursor = document.createRange(), selection = getSelection();
@@ -67,6 +69,21 @@ import Testing
     for _ in 0..<30 where messages.conversion == nil { try await Task.sleep(for: .milliseconds(20)) }
     #expect(messages.conversion?["title"] == "Позвонить в сервис")
     #expect(messages.conversion?["line"] == "Позвонить **в сервис завтра** и записать ответ")
+    #expect(messages.conversion?["suffix"] == " **завтра** и записать ответ")
+
+    messages.conversion = nil
+    _ = try await web.callAsyncJavaScript("""
+        window.setNote('<p><em>Сегодня позвонить</em> <strong>в сервис завтра</strong> и записать ответ</p>');
+        const line = document.querySelector('#editor p'), selection = getSelection();
+        const start = line.querySelector('em').firstChild, end = line.querySelector('strong').firstChild;
+        document.getElementById('editor').focus();
+        selection.setBaseAndExtent(end, 'в сервис'.length, start, 'Сегодня '.length);
+        line.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', metaKey:true, shiftKey:true, bubbles:true, cancelable:true}));
+        """, arguments: [:], in: nil, contentWorld: .page)
+    for _ in 0..<100 where messages.conversion == nil { try await Task.sleep(for: .milliseconds(20)) }
+    #expect(messages.conversion?["selection"] == "true")
+    #expect(messages.conversion?["title"] == "позвонить в сервис")
+    #expect(messages.conversion?["leading"] == "*Сегодня* ")
     #expect(messages.conversion?["suffix"] == " **завтра** и записать ответ")
 
     let taskUUID = UUID().uuidString.lowercased()

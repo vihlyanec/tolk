@@ -61,6 +61,8 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
     @ObservationIgnored private var backupDay = ""
     @ObservationIgnored private var pendingQuickDraft: QuickCaptureDraft?
     @ObservationIgnored private var quickDraftSaveTask: Task<Void, Never>?
+    @ObservationIgnored private var pendingDocumentBodies: [UUID: String] = [:]
+    @ObservationIgnored private var documentSaveTask: Task<Void, Never>?
     let dataURL: URL
 
     init(demo: Bool = false, storageURL: URL? = nil) {
@@ -219,7 +221,46 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         quickDraftSaveTask?.cancel(); quickDraftSaveTask = nil; pendingQuickDraft = nil
         change(undo: false, notifyServices: false) { QuickCaptureDraft().apply(to: &$0.preferences) }
     }
-    func update(_ id: UUID, _ action: (inout Item) -> Void) {
+    func documentBody(_ id: UUID) -> String {
+        pendingDocumentBodies[id] ?? item(id)?.body ?? ""
+    }
+    func queueDocumentBody(_ text: String, for id: UUID) {
+        pendingDocumentBodies[id] = text
+        documentSaveTask?.cancel()
+        documentSaveTask = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
+            guard !Task.isCancelled else { return }
+            self?.flushDocumentBodies()
+        }
+    }
+    @discardableResult
+    func flushDocumentBody(_ id: UUID, finalizeTags: Bool = false) -> Bool {
+        guard let text = pendingDocumentBodies.removeValue(forKey: id) else {
+            if finalizeTags { commitHashtags(id) }
+            return true
+        }
+        guard let current = item(id), !current.deleted else {
+            pendingDocumentBodies[id] = text
+            errorMessage = "Не удалось сохранить текст. Восстановите запись перед сохранением."
+            return false
+        }
+        if current.body != text {
+            update(id, finalizeTags: finalizeTags) { $0.body = text }
+            if item(id)?.body != text {
+                pendingDocumentBodies[id] = text
+                return false
+            }
+        } else if finalizeTags { commitHashtags(id) }
+        return true
+    }
+    @discardableResult
+    func flushDocumentBodies() -> Bool {
+        documentSaveTask?.cancel()
+        documentSaveTask = nil
+        for id in Array(pendingDocumentBodies.keys) { flushDocumentBody(id) }
+        return pendingDocumentBodies.isEmpty
+    }
+    func update(_ id: UUID, finalizeTags: Bool = false, _ action: (inout Item) -> Void) {
         let projected = item(id)
         change { snapshot in
             if !snapshot.items.contains(where: { $0.id == id }), let projected { snapshot.items.append(projected) }
@@ -229,7 +270,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
             if previous.title != snapshot.items[index].title || previous.body != snapshot.items[index].body {
                 let text = snapshot.items[index].title + "\n" + snapshot.items[index].body
                 let names = Hashtags.names(in: text)
-                let finished = Hashtags.names(in: snapshot.items[index].title, terminatedOnly: true) + Hashtags.names(in: snapshot.items[index].body, terminatedOnly: true)
+                let finished = finalizeTags ? names : Hashtags.names(in: snapshot.items[index].title, terminatedOnly: true) + Hashtags.names(in: snapshot.items[index].body, terminatedOnly: true)
                 for name in names {
                     var tag = snapshot.tags.first { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }
                     if tag == nil && finished.contains(name) {
@@ -367,6 +408,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         return true
     }
     func delete(_ id: UUID) {
+        guard flushDocumentBody(id) else { return }
         guard let value = item(id), !value.deleted else { return }
         if value.kind == .task && value.recurrence != .none {
             calendarEditingID = nil
@@ -484,6 +526,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         }
     }
     func undo() {
+        guard flushDocumentBodies() else { return }
         guard let edit = past.last else { return }
         do {
             var previous = preservingStickyLayout(in: try edit.restoring(in: data))
@@ -495,6 +538,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         } catch { errorMessage = error.localizedDescription }
     }
     func redo() {
+        guard flushDocumentBodies() else { return }
         guard let edit = future.last else { return }
         do {
             var next = preservingStickyLayout(in: try edit.restoring(in: data))

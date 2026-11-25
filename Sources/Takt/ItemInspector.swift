@@ -93,12 +93,7 @@ struct ItemInspector: View {
                                 formatButton("checkmark.rectangle", "Создать задачу из строки", "convert-task", "")
                                 formatButton("link", "Ссылка", "[", "](https://)")
                             }
-                            RichNoteEditor(text: binding(\.body, fallback: ""), action: format, tags: state.data.tags,
-                                           editable: !item.deleted, commitTags: { state.commitHashtags(id) },
-                                           convertLine: { line, occurrence, title, done, suffix in
-                                               state.createTaskFromNoteLine(noteID: id, sourceLine: line, occurrence: occurrence, title: title, completed: done, suffix: suffix)
-                                           }, openLinkedTask: state.openLinkedTask,
-                                           conversionUnavailable: { state.errorMessage = "Поставьте курсор после текста задачи в заметке." })
+                            RichNoteEditor(state: state, id: id, action: format, tags: state.data.tags, editable: !item.deleted).id(id)
                                 .frame(minHeight: 260)
                         } else if preview {
                             MarkdownPreview(text: item.body, taskLinks: true) { copiedAt = Date() }.frame(minHeight: 180)

@@ -158,8 +158,10 @@ extension AppState {
     }
 
     @discardableResult
-    func createTaskFromNoteLine(noteID: UUID, sourceLine: String, occurrence: Int, title: String, completed: Bool, suffix: String = "") -> UUID? {
-        guard let note = data.items.first(where: { $0.id == noteID && $0.kind == .note && !$0.deleted }),
+    func createTaskFromNoteLine(noteID: UUID, sourceLine: String, occurrence: Int, title: String, completed: Bool,
+                                suffix: String = "", leading: String = "", replacesSelection: Bool = false) -> UUID? {
+        guard flushDocumentBody(noteID),
+              let note = data.items.first(where: { $0.id == noteID && $0.kind == .note && !$0.deleted }),
               !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, occurrence >= 0 else { return nil }
         let sourceKey = Self.noteLineKey(sourceLine)
         var matches = 0
@@ -181,8 +183,10 @@ extension AppState {
         task.tagIDs = data.tags.filter { tag in Hashtags.names(in: title).contains { $0.localizedCaseInsensitiveCompare(tag.name) == .orderedSame } }.map(\.id)
         let label = title.replacingOccurrences(of: "[", with: "(").replacingOccurrences(of: "]", with: ")")
         let original = String(note.body[target])
-        let prefix = original.range(of: #"^\s*(?:[-*+] |\d+[.)] )?"#, options: .regularExpression).map { String(original[$0]) } ?? ""
-        let link = "\(prefix)[\(label)](tolk-task://item/\(task.id.uuidString.lowercased()))\(suffix)"
+        let keepCheckbox = replacesSelection && !(leading + suffix).trimmingCharacters(in: .whitespaces).isEmpty
+        let marker = keepCheckbox ? #"^\s*(?:[-*+]\s+\[[ xX]\]\s+|[-*+]\s+|\d+[.)]\s+)?"# : #"^\s*(?:[-*+]\s+|\d+[.)]\s+)?"#
+        let prefix = original.range(of: marker, options: .regularExpression).map { String(original[$0]) } ?? ""
+        let link = "\(prefix)\(leading)[\(label)](tolk-task://item/\(task.id.uuidString.lowercased()))\(suffix)"
         var updated = note.body
         updated.replaceSubrange(target, with: link)
         change { snapshot in

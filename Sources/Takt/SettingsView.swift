@@ -103,6 +103,7 @@ struct SettingsView: View {
         }.formStyle(.grouped).frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     private func exportData() {
+        guard state.flushDocumentBodies() else { return }
         let panel = NSSavePanel(); panel.nameFieldStringValue = "Толк-\(Date().formatted(.iso8601.year().month().day())).json"; panel.allowedContentTypes = [.json]
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do { try Database.export(state.data, to: url); state.notice = "Экспорт сохранён" }
@@ -117,6 +118,7 @@ struct SettingsView: View {
             alert.informativeText = "Будет загружено записей: \(imported.items.count). Текущие данные сохранятся в отдельном экспорте перед заменой."
             alert.addButton(withTitle: "Заменить"); alert.addButton(withTitle: "Отмена")
             guard alert.runModal() == .alertFirstButtonReturn else { return }
+            guard state.flushDocumentBodies() else { return }
             let backup = state.dataURL.deletingLastPathComponent().appendingPathComponent("before-restore-\(UUID().uuidString).json")
             try Database.export(state.data, to: backup)
             state.restore(imported); state.selectedID = nil; state.scope = .all

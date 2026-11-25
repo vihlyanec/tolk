@@ -299,12 +299,7 @@ struct StickyView: View {
                                 .menuStyle(.borderlessButton).fixedSize().help("Действия с заметкой")
                         }
                         if !state.tagIDs(for: item).isEmpty { FlowTags(state: state, item: item) }
-                        RichNoteEditor(text: Binding(get: { self.item?.body ?? "" }, set: { text in state.update(id) { $0.body = text } }),
-                                       action: action, tags: state.data.tags, commitTags: { state.commitHashtags(id) },
-                                       convertLine: { line, occurrence, title, done, suffix in
-                                           state.createTaskFromNoteLine(noteID: id, sourceLine: line, occurrence: occurrence, title: title, completed: done, suffix: suffix)
-                                       }, openLinkedTask: state.openLinkedTask,
-                                       conversionUnavailable: { state.errorMessage = "Поставьте курсор после текста задачи в заметке." })
+                        RichNoteEditor(state: state, id: id, action: action, tags: state.data.tags, convertsTasks: item.kind == .note)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                         if let error = state.errorMessage { Text(error).font(.system(size: 11)).foregroundStyle(.red) }
                     }.padding(.horizontal, 12).padding(.bottom, 12)

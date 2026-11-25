@@ -83,7 +83,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         if mainWindow == nil { showMain() }
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showMain(); return true }
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        state.flushDocumentBodies() ? .terminateNow : .terminateCancel
+    }
     func applicationWillTerminate(_ notification: Notification) { state.flushQuickDraft(); state.syncCoordinator?.stop(); state.accountService?.stop(); keys?.stop(); reminderTimer?.invalidate(); todayPopover?.close(); demoPauseTask?.cancel() }
+    func windowWillClose(_ notification: Notification) {
+        if notification.object as? NSWindow === mainWindow { state.flushDocumentBodies() }
+    }
     private func makeMenu() {
         let bar = NSMenu()
         let app = NSMenu(); let appItem = NSMenuItem(); appItem.submenu = app; bar.addItem(appItem)
@@ -274,6 +280,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         if let editor = findEditor(in: panel.contentView) { panel.makeFirstResponder(editor) }
     }
     private func toggleSticky(_ id: UUID) {
+        guard state.flushDocumentBody(id) else { return }
         guard let window = stickies[id], let item = state.data.items.first(where: { $0.id == id && !$0.deleted }),
               let screen = NSScreen.screens.first(where: { $0.visibleFrame.intersects(window.frame) }) ?? activeScreen() else { return }
         let wasCollapsed = item.stickyCollapsed == true
@@ -297,7 +304,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             }
         }
     }
-    private func hideSticky(_ id: UUID) { stickies[id]?.orderOut(nil); state.update(id) { $0.stickyOpen = false } }
+    private func hideSticky(_ id: UUID) {
+        guard state.flushDocumentBody(id) else { return }
+        stickies[id]?.orderOut(nil)
+        state.update(id) { $0.stickyOpen = false }
+    }
     private func findEditor(in view: NSView?) -> NSTextView? {
         guard let view else { return nil }
         if let editor = view as? TagTextView, editor.isTitleField { return nil }

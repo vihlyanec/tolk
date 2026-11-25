@@ -128,6 +128,9 @@ private struct AccountAPI {
                     if response.results.isEmpty && response.changes.isEmpty && response.epoch == current.epoch && !response.more && operations.isEmpty {
                         self.status = current.conflicts.isEmpty ? "Синхронизировано с аккаунтом «\(current.name)»" : "Нужно выбрать версию: \(current.conflicts.count)"; return
                     }
+                    guard self.state?.flushDocumentBodies() == true else {
+                        throw TaktError.storage("Сохраните черновик заметки перед синхронизацией.")
+                    }
                     let previous = self.state?.data
                     var failure: Error?
                     var expectedSync: AccountSyncState?
@@ -152,7 +155,7 @@ private struct AccountAPI {
         }
     }
     func recover() {
-        guard let state, !busy, !state.isDemo else { return }
+        guard let state, !busy, !state.isDemo, state.flushDocumentBodies() else { return }
         do {
             let backup = state.dataURL.deletingLastPathComponent().appendingPathComponent("before-account-recovery-\(UUID().uuidString).json")
             try Database.export(state.data,to:backup)
@@ -161,6 +164,7 @@ private struct AccountAPI {
         } catch { status = error.localizedDescription }
     }
     func resolve(_ id: String, local: Bool) {
+        guard state?.flushDocumentBodies() == true else { return }
         state?.change(undo:false) { snapshot in
             do { try AccountEngine.resolve(id,useLocal:local,in:&snapshot) }
             catch { self.status = error.localizedDescription }

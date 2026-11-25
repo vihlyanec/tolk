@@ -61,6 +61,45 @@ import TaktCore
     #expect(state.item(taskID) == nil && state.item(note.id)?.body == note.body)
 }
 
+@Test @MainActor func selectionConversionFlushesTheDraftAndPreservesTheChecklistAndUndo() throws {
+    let state = AppState(demo: true)
+    let note = Item(title: "Поручения", kind: .note)
+    state.add(note)
+    let line = "- [ ] *Сегодня* позвонить в сервис **до обеда**"
+    state.queueDocumentBody(line, for: note.id)
+    let taskID = try #require(state.createTaskFromNoteLine(noteID: note.id, sourceLine: line, occurrence: 0,
+        title: "позвонить в сервис", completed: false, suffix: " **до обеда**", leading: "*Сегодня* ", replacesSelection: true))
+    let link = "tolk-task://item/\(taskID.uuidString.lowercased())"
+    #expect(state.item(taskID)?.title == "позвонить в сервис")
+    #expect(state.documentBody(note.id) == "- [ ] *Сегодня* [позвонить в сервис](\(link)) **до обеда**")
+    state.undo()
+    #expect(state.item(taskID) == nil && state.documentBody(note.id) == line)
+}
+
+@Test @MainActor func documentTypingBatchesWritesAndFlushesTheLatestTextOfEachEditor() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("takt.sqlite")
+    let state = AppState(storageURL: url)
+    let note = Item(title: "Длинная заметка", kind: .note), stickyTask = Item(title: "Стикер")
+    state.add(note)
+    state.add(stickyTask)
+    let base = String(repeating: "Заметки со встречи\n\n", count: 200)
+    var saves = 0
+    state.didSave = { saves += 1 }
+    for key in 1...80 {
+        state.queueDocumentBody(base + "\(key)", for: note.id)
+        state.queueDocumentBody("Черновик \(key)", for: stickyTask.id)
+    }
+    #expect(saves == 0 && state.item(note.id)?.body == note.body)
+    #expect(state.documentBody(note.id) == base + "80")
+    #expect(state.flushDocumentBody(stickyTask.id))
+    #expect(saves == 1 && AppState(storageURL: url).item(stickyTask.id)?.body == "Черновик 80")
+    let deadline = ContinuousClock.now + .seconds(20)
+    while saves < 2, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(25)) }
+    #expect(saves == 2 && AppState(storageURL: url).item(note.id)?.body == base + "80")
+}
+
 @Test @MainActor func focusHistoryLogsCompletedPhasesOnceAndUsesSafeSpreadsheetCells() throws {
     let state = AppState(demo: true)
     let task = Item(title: "=Подготовить\tотчёт\nв срок")

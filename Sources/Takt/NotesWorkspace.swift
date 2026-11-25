@@ -87,7 +87,7 @@ struct NoteDocumentEditor: View {
                         formatButton("italic", "Курсив", "*", "*")
                         formatButton("textformat.size", "Заголовок", "## ", "")
                         formatButton("checklist", "Чек-лист", "- [ ] ", "")
-                        formatButton("checkmark.rectangle", "Создать задачу из строки · ⇧⌘↩ до курсора", "convert-task", "")
+                        formatButton("checkmark.rectangle", "Создать задачу из строки · ⇧⌘↩ для выделения или текста до курсора", "convert-task", "")
                         Menu {
                             Button("Маркированный список") { format = EditorAction(before: "- ", after: "") }
                             Button("Нумерованный список") { format = EditorAction(before: "1. ", after: "") }
@@ -121,12 +121,7 @@ struct NoteDocumentEditor: View {
                     Text(item.modified.formatted(date: .abbreviated, time: .shortened)).font(.system(size: 11)).foregroundStyle(.secondary).frame(maxWidth: .infinity)
                     TagTitleInput(text: Binding(get: { self.item?.title ?? "" }, set: { text in state.update(id) { $0.title = text } }), tags: state.data.tags, fontSize: 25, placeholder: "Название заметки", autoFocus: item.title.isEmpty && !item.deleted, onCommit: { state.commitHashtags(id) }).disabled(item.deleted)
                     if !state.tagIDs(for: item).isEmpty { FlowTags(state: state, item: item) }
-                    RichNoteEditor(text: Binding(get: { self.item?.body ?? "" }, set: { text in state.update(id) { $0.body = text } }),
-                                   action: format, tags: state.data.tags, editable: !item.deleted, commitTags: { state.commitHashtags(id) },
-                                   convertLine: { line, occurrence, title, done, suffix in
-                                       state.createTaskFromNoteLine(noteID: id, sourceLine: line, occurrence: occurrence, title: title, completed: done, suffix: suffix)
-                                   }, openLinkedTask: state.openLinkedTask,
-                                   conversionUnavailable: { state.errorMessage = "Поставьте курсор после текста задачи в заметке." })
+                    RichNoteEditor(state: state, id: id, action: format, tags: state.data.tags, editable: !item.deleted)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }.padding(28)
             }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Palette.canvas)

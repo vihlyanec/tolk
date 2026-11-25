@@ -289,7 +289,7 @@ import TaktCore
                     if let remote { pull.tasks.append(remote) }
                     else { self.state?.change(undo: false) { $0.tickTick?.links[key]?.missing = true } }
                 }
-                guard active() else { return }
+                guard active(), self.state?.flushDocumentBodies() == true else { return }
                 self.state?.change(undo: false) { snapshot in
                     SyncEngine.ingest(projects: pull.projects, tasks: pull.tasks, inboxIDs: pull.inboxIDs, columns: pull.columns, into: &snapshot)
                 }
@@ -310,6 +310,7 @@ import TaktCore
                         }
                         guard active() else { return }
                         if fresh.raw != link.remote.raw {
+                            guard self.state?.flushDocumentBodies() == true else { return }
                             self.state?.change(undo: false) { SyncEngine.ingest(projects: [], tasks: [fresh], inboxIDs: pull.inboxIDs, into: &$0) }
                             continue
                         }
