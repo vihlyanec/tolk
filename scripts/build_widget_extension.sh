@@ -27,10 +27,11 @@ for widget_key in CFBundleShortVersionString CFBundleVersion; do
     widget_version=$(/usr/libexec/PlistBuddy -c "Print :$widget_key" "$1/Contents/Info.plist")
     /usr/libexec/PlistBuddy -c "Set :$widget_key $widget_version" "$widget_extension/Contents/Info.plist"
 done
-widget_sources=("$PWD/Sources/TaktCore/WidgetData.swift" "$PWD/Sources/TaktWidget/TaskWidget.swift")
+widget_intent_sources=("$PWD/Sources/TaktCore/WidgetData.swift" "$PWD/Sources/Takt/TaskWidgetIntents.swift")
+widget_sources=("${widget_intent_sources[@]}" "$PWD/Sources/TaktWidget/TaskWidget.swift")
 printf '%s\n' "$widget_sources[@]" > "$widget_path/sources.txt"
+printf '%s\n' "$widget_intent_sources[@]" > "$widget_path/host-sources.txt"
 printf '%s\n' '["AppIntent","AppEntity","EntityQuery","WidgetConfigurationIntent","AppIntentsPackage"]' > "$widget_path/protocols.json"
-printf '%s\n' "$widget_path/TaktWidget.swiftconstvalues" > "$widget_path/constants.txt"
 widget_architectures=("$(uname -m)")
 if [[ ${TOLK_UNIVERSAL:-0} == 1 ]]; then
     if [[ $widget_architectures[1] == arm64 ]]; then widget_architectures+=(x86_64); else widget_architectures+=(arm64); fi
@@ -45,7 +46,7 @@ for widget_architecture in "${widget_architectures[@]}"; do
     fi
     widget_slice="$widget_path/TaktWidget-$widget_architecture"
     "$widget_toolchain/usr/bin/swiftc" -sdk "$widget_sdk" -target "$widget_architecture-apple-macosx14.0" -application-extension \
-        -swift-version 6 -parse-as-library -O -whole-module-optimization -module-name TaktWidget \
+        -swift-version 6 -parse-as-library -O -whole-module-optimization -module-name TaktWidget -D TOLK_WIDGET_STANDALONE \
         -module-cache-path "${TMPDIR:-/private/tmp}/takt-widget-module-cache" \
         -Xlinker -platform_version -Xlinker macos -Xlinker 14.0 -Xlinker "$widget_sdk_version" \
         -Xlinker -e -Xlinker _NSExtensionMain \
@@ -67,8 +68,26 @@ else
     mv "$widget_slices[1]" "$widget_binary"
 fi
 python3 scripts/verify_build_sdk.py "$widget_binary" --expected-sdk "$widget_sdk_version" "${widget_verify[@]}"
-"$widget_processor" --toolchain-dir "$widget_toolchain" --module-name TaktWidget --sdk-root "$widget_sdk" \
-    --xcode-version "$widget_xcode_version" --platform-family macOS --deployment-target 14.0 \
-    --target-triple "$widget_target" --source-file-list "$widget_path/sources.txt" \
-    --swift-const-vals-list "$widget_path/constants.txt" --output "$widget_extension/Contents/Resources" --force
-test -s "$widget_extension/Contents/Resources/Metadata.appintents/extract.actionsdata"
+
+emit_intent_metadata() {
+    local module=$1 binary=$2 bundle_id=$3 resources=$4 sources=$5
+    printf '%s\n' "$widget_path/$module.swiftconstvalues" > "$widget_path/$module.constants.txt"
+    "$widget_processor" --toolchain-dir "$widget_toolchain" --module-name "$module" --sdk-root "$widget_sdk" \
+        --xcode-version "$widget_xcode_version" --platform-family macOS --deployment-target 14.0 \
+        --target-triple "$widget_target" --bundle-identifier "$bundle_id" --binary-file "$binary" \
+        --source-file-list "$sources" --swift-const-vals-list "$widget_path/$module.constants.txt" \
+        --output "$resources" --compile-time-extraction --deployment-aware-processing
+    test -s "$resources/Metadata.appintents/extract.actionsdata"
+}
+
+emit_intent_metadata TaktWidget "$widget_binary" "$widget_host_id.tasks" \
+    "$widget_extension/Contents/Resources" "$widget_path/sources.txt"
+
+# WidgetKit looks up the default intent by the containing app's bundle identifier.
+"$widget_toolchain/usr/bin/swiftc" -sdk "$widget_sdk" -target "$widget_target" -c \
+    -swift-version 6 -parse-as-library -O -whole-module-optimization -module-name Takt -D TOLK_WIDGET_STANDALONE \
+    -module-cache-path "${TMPDIR:-/private/tmp}/takt-widget-module-cache" \
+    -Xfrontend -emit-const-values-path -Xfrontend "$widget_path/Takt.swiftconstvalues" \
+    -Xfrontend -const-gather-protocols-file -Xfrontend "$widget_path/protocols.json" \
+    "${widget_intent_sources[@]}" -o "$widget_path/TaktIntents.o"
+emit_intent_metadata Takt "$1/Contents/MacOS/Takt" "$widget_host_id" "$1/Contents/Resources" "$widget_path/host-sources.txt"
