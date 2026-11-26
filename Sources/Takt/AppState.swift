@@ -11,8 +11,8 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
 @Observable final class AppState {
     let pomodoro: PomodoroController
     var pendingFocusTask: Item?
-    var data: Snapshot { didSet { widgetDataChanged() } }
-    @ObservationIgnored var widgetDataChanged: () -> Void = {}
+    var data: Snapshot { didSet { widgetDataChanged?(oldValue) } }
+    @ObservationIgnored var widgetDataChanged: ((Snapshot) -> Void)?
     var area: Area = .tasks
     var scope: Scope = .all
     var selectedID: UUID?
@@ -682,6 +682,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         return Set(item.tagIDs).union(data.tags.filter { names.contains($0.name.lowercased()) }.map(\.id))
     }
     func matchesQuery(_ item: Item, _ query: String) -> Bool {
+        if query.isEmpty { return true }
         if query.trimmingCharacters(in: .whitespacesAndNewlines) == "#" { return !tagIDs(for: item).isEmpty }
         let terms = Hashtags.searchTerms(in: query)
         for name in terms.tags {
@@ -733,10 +734,17 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         }
         let standard = [list("today", "Сегодня", active(.today)), list("inbox", "Входящие", active(.inbox)),
                         list("week", "Следующие 7 дней", active(.week))]
+        let tasks = active(.all)
+        let tasksByProject = Dictionary(grouping: tasks, by: \.projectID)
         let projects = activeProjects.filter { $0.kind == .task }.map {
-            list("project:\($0.id)", $0.name, active(.project($0.id)))
+            list("project:\($0.id)", $0.name, tasksByProject[$0.id] ?? [])
         }
-        let tags = data.tags.map { list("tag:\($0.id)", "#" + $0.name, active(.tag($0.id))) }
+        let taggedTasks = data.tags.isEmpty ? [] : tasks.map { (task: $0, tags: tagIDs(for: $0)) }
+        let tags = data.tags.map { tag in
+            let family = tagFamily(tag.id)
+            return list("tag:\(tag.id)", "#" + tag.name,
+                        taggedTasks.filter { !$0.tags.isDisjoint(with: family) }.map(\.task))
+        }
         let filters = savedQueueFilters.filter(isQueueFilterAvailable).map { filter in
             list("filter:\(filter.id)", filter.name, queueItems(inboxOnly: filter.inboxOnly, projectID: filter.projectID,
                  tagID: filter.tagID, priority: filter.priority, dateFilter: filter.dateFilter,

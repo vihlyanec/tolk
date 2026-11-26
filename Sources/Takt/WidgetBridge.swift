@@ -14,7 +14,16 @@ import WidgetKit
     init(store: WidgetStore, state: AppState) {
         self.store = store
         self.state = state
-        state.widgetDataChanged = { [weak self] in self?.needsPublish = true }
+        state.widgetDataChanged = { [weak self] previous in self?.invalidateIfNeeded(previous) }
+    }
+
+    private func invalidateIfNeeded(_ previous: Snapshot) {
+        guard !needsPublish else { return }
+        let current = state.data
+        needsPublish = previous.projects != current.projects || previous.tags != current.tags
+            || previous.workspaceOptions?.queueFilters != current.workspaceOptions?.queueFilters
+            || previous.preferences.timeZone != current.preferences.timeZone
+            || !previous.items.lazy.filter { $0.kind == .task }.elementsEqual(current.items.lazy.filter { $0.kind == .task })
     }
 
     func start() {

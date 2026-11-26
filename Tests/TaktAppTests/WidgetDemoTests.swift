@@ -67,3 +67,22 @@ import TaktCore
     #expect(restarted.item(task.id)?.body == task.body)
     #expect(try store.read().completions.isEmpty)
 }
+
+@Test @MainActor func widgetTagListsIncludeLegacyAndNestedTagsFromTheTasksArea() throws {
+    let state = AppState(demo: true)
+    let parent = Tag(name: "дела")
+    let child = Tag(name: "проекты", parentID: parent.id)
+    var task = Item(title: "Отправить черновик")
+    task.tagIDs = [child.id]
+    var legacy = Item(title: "Сверить #дела")
+    legacy.body = "Текст старой задачи"
+    let note = Item(title: "Мысль #дела", kind: .note)
+    state.change { snapshot in
+        snapshot.tags = [parent, child]
+        snapshot.items = [task, legacy, note]
+    }
+    state.area = .notes
+    let lists = state.widgetTaskLists()
+    let tagged = try #require(lists.first { $0.id == "tag:\(parent.id)" })
+    #expect(Set(tagged.tasks.map(\.id)) == Set([task.id, legacy.id]))
+}
