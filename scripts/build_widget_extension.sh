@@ -14,6 +14,7 @@ if [[ ! -x "$widget_processor" ]]; then
     exit 1
 fi
 widget_sdk=$(xcrun --sdk macosx --show-sdk-path)
+widget_sdk_version=$(xcrun --sdk "$widget_sdk" --show-sdk-version)
 widget_xcode_version=$(xcodebuild -version | awk '/Build version/{print $3}')
 widget_extension="$1/Contents/PlugIns/TaktWidget.appex"
 widget_path="$(mktemp -d /private/tmp/tolk-widget-build.XXXXXX)"
@@ -46,6 +47,7 @@ for widget_architecture in "${widget_architectures[@]}"; do
     "$widget_toolchain/usr/bin/swiftc" -sdk "$widget_sdk" -target "$widget_architecture-apple-macosx14.0" -application-extension \
         -swift-version 6 -parse-as-library -O -whole-module-optimization -module-name TaktWidget \
         -module-cache-path "${TMPDIR:-/private/tmp}/takt-widget-module-cache" \
+        -Xlinker -platform_version -Xlinker macos -Xlinker 14.0 -Xlinker "$widget_sdk_version" \
         "${widget_flags[@]}" "$widget_sources[@]" -o "$widget_slice"
     widget_slices+=("$widget_slice")
 done
@@ -57,7 +59,7 @@ if [[ ${TOLK_UNIVERSAL:-0} == 1 ]]; then
 else
     mv "$widget_slices[1]" "$widget_binary"
 fi
-python3 scripts/verify_build_sdk.py "$widget_binary" --expected-sdk "$(xcrun --sdk "$widget_sdk" --show-sdk-version)" "${widget_verify[@]}"
+python3 scripts/verify_build_sdk.py "$widget_binary" --expected-sdk "$widget_sdk_version" "${widget_verify[@]}"
 "$widget_processor" --toolchain-dir "$widget_toolchain" --module-name TaktWidget --sdk-root "$widget_sdk" \
     --xcode-version "$widget_xcode_version" --platform-family macOS --deployment-target 14.0 \
     --target-triple "$widget_target" --source-file-list "$widget_path/sources.txt" \
