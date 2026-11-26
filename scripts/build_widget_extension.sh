@@ -32,6 +32,9 @@ widget_sources=("${widget_intent_sources[@]}" "$PWD/Sources/TaktWidget/TaskWidge
 printf '%s\n' "$widget_sources[@]" > "$widget_path/sources.txt"
 printf '%s\n' "$widget_intent_sources[@]" > "$widget_path/host-sources.txt"
 printf '%s\n' '["AppIntent","AppEntity","EntityQuery","WidgetConfigurationIntent","AppIntentsPackage"]' > "$widget_path/protocols.json"
+for widget_module in Takt TaktWidget; do
+    printf '{"":{"const-values":"%s/%s.swiftconstvalues"}}\n' "$widget_path" "$widget_module" > "$widget_path/$widget_module.outputs.json"
+done
 widget_architectures=("$(uname -m)")
 if [[ ${TOLK_UNIVERSAL:-0} == 1 ]]; then
     if [[ $widget_architectures[1] == arm64 ]]; then widget_architectures+=(x86_64); else widget_architectures+=(arm64); fi
@@ -41,8 +44,8 @@ widget_slices=()
 for widget_architecture in "${widget_architectures[@]}"; do
     widget_flags=()
     if [[ $widget_architecture == $widget_architectures[1] ]]; then
-        widget_flags=(-Xfrontend -emit-const-values-path -Xfrontend "$widget_path/TaktWidget.swiftconstvalues"
-                      -Xfrontend -const-gather-protocols-file -Xfrontend "$widget_path/protocols.json")
+        widget_flags=(-emit-const-values -const-gather-protocols-list "$widget_path/protocols.json"
+                      -output-file-map "$widget_path/TaktWidget.outputs.json")
     fi
     widget_slice="$widget_path/TaktWidget-$widget_architecture"
     "$widget_toolchain/usr/bin/swiftc" -sdk "$widget_sdk" -target "$widget_architecture-apple-macosx14.0" -application-extension \
@@ -87,7 +90,7 @@ emit_intent_metadata TaktWidget "$widget_binary" "$widget_host_id.tasks" \
 "$widget_toolchain/usr/bin/swiftc" -sdk "$widget_sdk" -target "$widget_target" -c \
     -swift-version 6 -parse-as-library -O -whole-module-optimization -module-name Takt -D TOLK_WIDGET_STANDALONE \
     -module-cache-path "${TMPDIR:-/private/tmp}/takt-widget-module-cache" \
-    -Xfrontend -emit-const-values-path -Xfrontend "$widget_path/Takt.swiftconstvalues" \
-    -Xfrontend -const-gather-protocols-file -Xfrontend "$widget_path/protocols.json" \
+    -emit-const-values -const-gather-protocols-list "$widget_path/protocols.json" \
+    -output-file-map "$widget_path/Takt.outputs.json" \
     "${widget_intent_sources[@]}" -o "$widget_path/TaktIntents.o"
 emit_intent_metadata Takt "$1/Contents/MacOS/Takt" "$widget_host_id" "$1/Contents/Resources" "$widget_path/host-sources.txt"
