@@ -11,7 +11,8 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
 @Observable final class AppState {
     let pomodoro: PomodoroController
     var pendingFocusTask: Item?
-    var data: Snapshot
+    var data: Snapshot { didSet { widgetDataChanged() } }
+    @ObservationIgnored var widgetDataChanged: () -> Void = {}
     var area: Area = .tasks
     var scope: Scope = .all
     var selectedID: UUID?
@@ -72,9 +73,17 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
             .appendingPathComponent("Takt", isDirectory: true).appendingPathComponent("takt.sqlite")
         dataURL = storageURL ?? (syncTest ? URL(fileURLWithPath: ProcessInfo.processInfo.environment["TOLK_SYNC_TEST_DATA"] ?? "/private/tmp/tolk-sync-isolated/takt.sqlite") : supportURL)
         pomodoro = PomodoroController(url: demo ? nil : dataURL.deletingLastPathComponent().appendingPathComponent("pomodoro.json"))
-        if demo { database = nil; data = Self.demo(); return }
+        if demo && storageURL == nil { database = nil; data = Self.demo(); return }
         do {
             let db = try Database(url: dataURL); var snapshot = try db.load()
+            if demo && snapshot == Snapshot() {
+                snapshot = Self.demo()
+                var inboxTask = Item(title: "Сверить смету с подрядчиком")
+                inboxTask.schedule = .day(Dates.calendar().startOfDay(for: .now))
+                inboxTask.priority = 1
+                snapshot.items += [inboxTask, Item(title: "Разобрать черновики")]
+                try db.save(snapshot)
+            }
             if snapshot.preferences.calendarUXVersion != 2 {
                 if snapshot.preferences.hourHeight == 64 { snapshot.preferences.hourHeight = 96 }
                 snapshot.preferences.calendarUXVersion = 2
@@ -123,6 +132,7 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
     }
     var calendar: Calendar { Dates.calendar(zone: data.preferences.timeZone) }
     var isDemo: Bool { memoryOnly }
+    var widgetDataAvailable: Bool { database != nil }
     var isSyncTest: Bool { Bundle.main.bundleIdentifier == "local.takt.synctest" || ProcessInfo.processInfo.arguments.contains("--sync-test") }
     var selected: Item? { data.items.first { $0.id == selectedID } }
     var draggingItem: Item? { draggingID.flatMap(item) }
@@ -683,19 +693,56 @@ struct TaskGroup: Identifiable { let id: String; var items: [Item] }
         return terms.text.isEmpty || (item.title + " " + item.body + " " + item.tagIDs.compactMap { id in data.tags.first { $0.id == id }?.name }.joined(separator: " ")).localizedCaseInsensitiveContains(terms.text)
     }
     var queue: [Item] {
-        let values = items(in: .all, searchText: queueSearch, activeOnly: true).filter { item in
-            guard !item.schedule.isTimed, !queueInboxOnly || item.projectID == nil,
-                  queueProjectID == nil || item.projectID == queueProjectID,
-                  queueTagID == nil || !tagIDs(for: item).isDisjoint(with: tagFamily(queueTagID!)),
-                  queuePriority == nil || item.priority == queuePriority else { return false }
-            switch queueDateFilter {
+        queueItems(inboxOnly: queueInboxOnly, projectID: queueProjectID, tagID: queueTagID,
+                   priority: queuePriority, dateFilter: queueDateFilter, searchText: queueSearch, order: queueSorting)
+    }
+    private func queueItems(inboxOnly: Bool, projectID: UUID?, tagID: UUID?, priority: Int?,
+                            dateFilter: String, searchText: String, order: Sorting, kind: ItemKind? = nil) -> [Item] {
+        let tagIDsForFilter = tagID.map(tagFamily)
+        let values = items(in: .all, searchText: searchText, activeOnly: true, kind: kind).filter { item in
+            guard !item.schedule.isTimed, !inboxOnly || item.projectID == nil,
+                  projectID == nil || item.projectID == projectID,
+                  tagIDsForFilter.map({ !tagIDs(for: item).isDisjoint(with: $0) }) ?? true,
+                  priority == nil || item.priority == priority else { return false }
+            switch dateFilter {
             case "Без даты": return item.schedule.date == nil
             case "С датой": return item.schedule.date != nil
             case "Просрочено": return isOverdue(item)
             default: return true
             }
         }
-        return sorted(values, by: queueSorting)
+        return sorted(values, by: order)
+    }
+
+    func widgetTaskLists() -> [WidgetTaskList] {
+        func list(_ id: String, _ title: String, _ tasks: [Item]) -> WidgetTaskList {
+            WidgetTaskList(id: id, title: title, tasks: tasks.map {
+                WidgetTask(id: $0.id, title: $0.title, date: $0.schedule.date, timed: $0.schedule.isTimed,
+                           priority: $0.priority, revision: $0.modified)
+            })
+        }
+        func active(_ scope: Scope) -> [Item] {
+            items(in: scope, searchText: "", activeOnly: true, kind: .task).filter(\.isActiveTask).sorted {
+                let first = $0.schedule.date ?? .distantFuture, second = $1.schedule.date ?? .distantFuture
+                if first != second { return first < second }
+                let firstPriority = $0.priority == 0 ? 4 : $0.priority
+                let secondPriority = $1.priority == 0 ? 4 : $1.priority
+                if firstPriority != secondPriority { return firstPriority < secondPriority }
+                return $0.title.localizedStandardCompare($1.title) == .orderedAscending
+            }
+        }
+        let standard = [list("today", "Сегодня", active(.today)), list("inbox", "Входящие", active(.inbox)),
+                        list("week", "Следующие 7 дней", active(.week))]
+        let projects = activeProjects.filter { $0.kind == .task }.map {
+            list("project:\($0.id)", $0.name, active(.project($0.id)))
+        }
+        let tags = data.tags.map { list("tag:\($0.id)", "#" + $0.name, active(.tag($0.id))) }
+        let filters = savedQueueFilters.filter(isQueueFilterAvailable).map { filter in
+            list("filter:\(filter.id)", filter.name, queueItems(inboxOnly: filter.inboxOnly, projectID: filter.projectID,
+                 tagID: filter.tagID, priority: filter.priority, dateFilter: filter.dateFilter,
+                 searchText: filter.search, order: Sorting(rawValue: filter.sorting) ?? .manual, kind: .task))
+        }
+        return standard + projects + tags + filters
     }
     var queueHasFilters: Bool { queueProjectID != nil || queueTagID != nil || queuePriority != nil || queueDateFilter != "Без времени" || !queueSearch.isEmpty }
     func resetQueueFilters() { queueProjectID = nil; queueTagID = nil; queuePriority = nil; queueDateFilter = "Без времени"; queueSearch = "" }

@@ -36,6 +36,13 @@ python3 scripts/verify_build_sdk.py "$tolk_binary" --expected-sdk "$tolk_sdk_ver
 mkdir -p "$tolk_output"
 tolk_variants=("Толк" "Толк Demo")
 if [[ ${TOLK_RELEASE:-0} == 1 ]]; then tolk_variants=("Толк"); fi
+if [[ ${TOLK_WIDGET_DEMO:-0} == 1 ]]; then
+    if [[ ${TOLK_RELEASE:-0} == 1 || ${TOLK_SYNC_TEST:-0} == 1 || ${TOLK_UNIVERSAL:-0} == 1 ]]; then
+        print -u2 "Виджет собирается только в отдельном локальном Demo."
+        exit 1
+    fi
+    tolk_variants=("Толк Demo Виджеты")
+fi
 if [[ ${TOLK_SYNC_TEST:-0} == 1 ]]; then
     if [[ ${TOLK_RELEASE:-0} == 1 ]]; then print -u2 "Sync Test не может быть релизом"; exit 1; fi
     tolk_variants=("Толк Sync Test")
@@ -70,6 +77,21 @@ for takt_variant in "${tolk_variants[@]}"; do
     python3 scripts/configure_bundle.py "$takt_bundle" "${tolk_config_args[@]}"
     tolk_sign_args=()
     if [[ ${TOLK_RELEASE:-0} == 1 && ${TOLK_TEST_BUILD:-0} != 1 ]]; then tolk_sign_args=(--release); fi
+    tolk_widget_scheme=""
+    if [[ "$takt_variant" == "Толк Demo Виджеты" ]]; then
+        /usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier local.takt.widgetdemo' "$takt_bundle/Contents/Info.plist"
+        /usr/libexec/PlistBuddy -c 'Set :CFBundleName Толк Demo Виджеты' "$takt_bundle/Contents/Info.plist"
+        /usr/libexec/PlistBuddy -c 'Set :CFBundleDisplayName Толк Demo Виджеты' "$takt_bundle/Contents/Info.plist"
+        tolk_widget_scheme=tolk-widget-demo
+    elif [[ "$takt_variant" == "Толк" && ( ${TOLK_RELEASE:-0} == 1 || ${TOLK_WIDGET:-0} == 1 ) ]]; then
+        tolk_widget_scheme=tolk-widget
+    fi
+    if [[ -n "$tolk_widget_scheme" ]]; then
+        /usr/libexec/PlistBuddy -c 'Add :CFBundleURLTypes array' -c 'Add :CFBundleURLTypes:0 dict' \
+            -c 'Add :CFBundleURLTypes:0:CFBundleURLSchemes array' \
+            -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string $tolk_widget_scheme" "$takt_bundle/Contents/Info.plist"
+        zsh scripts/build_widget_extension.sh "$takt_bundle"
+    fi
     python3 scripts/sign_bundle.py "$takt_bundle" "${tolk_sign_args[@]}"
     # Remove only the generated destination: ditto merges could retain obsolete app files.
     if [[ -d "$tolk_output/$takt_variant.app" ]]; then rm -rf "$tolk_output/$takt_variant.app"; fi

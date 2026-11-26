@@ -13,7 +13,9 @@ final class KeyPanel: NSPanel {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNotificationCenterDelegate, NSMenuItemValidation {
-    let state = AppState(demo: ProcessInfo.processInfo.arguments.contains("--demo") || ProcessInfo.processInfo.arguments.contains("--render") || (Bundle.main.bundleIdentifier == "local.takt.demo" || Bundle.main.bundleIdentifier == "local.takt.focus-preview"))
+    let state: AppState
+    private let widgetBridge: WidgetBridge?
+    private let isWidgetDemo: Bool
     private var mainWindow: NSWindow?
     private var settingsWindow: NSWindow?
     private var quickPanel: KeyPanel?
@@ -30,6 +32,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     private var previousApplication: NSRunningApplication?
     private var lastShift: Bool?
     private var reminderTimer: Timer?
+
+    override init() {
+        let id = Bundle.main.bundleIdentifier ?? ""
+        let isWidgetDemo = id == WidgetStore.demoBundle
+        let demo = isWidgetDemo || ["local.takt.demo", "local.takt.focus-preview"].contains(id)
+            || ProcessInfo.processInfo.arguments.contains("--demo") || ProcessInfo.processInfo.arguments.contains("--render")
+        let bundledWidget = Bundle.main.builtInPlugInsURL?.appendingPathComponent("TaktWidget.appex")
+        let hasWidget = bundledWidget.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+        let store = hasWidget && (isWidgetDemo || !demo) && !ProcessInfo.processInfo.arguments.contains("--sync-test")
+            ? WidgetStore.installed : nil
+        let state = AppState(demo: demo, storageURL: isWidgetDemo ? store?.directory.appendingPathComponent("widget-demo.sqlite") : nil)
+        self.state = state
+        self.isWidgetDemo = isWidgetDemo
+        widgetBridge = store.map { WidgetBridge(store: $0, state: state) }
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if ProcessInfo.processInfo.arguments.contains("--render") { renderPreviews(); return }
@@ -67,7 +85,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         reminders.reportError = { [weak self] text in self?.state.errorMessage = text }
         state.didSave = { [weak self] in self?.refreshServices(); self?.state.syncCoordinator?.localChanged(); self?.state.acceptAccountFocus(); self?.state.accountService?.changed() }
         state.onTaskCompleted = { [weak self] preferences in self?.completionFeedback.play(preferences) }
-        if !state.isSyncTest { keys = HotKeys { [weak self] id in if id == 1 { self?.openQuick(date: nil) } else { self?.openSticky(id: nil) } } }
+        if !state.isSyncTest && !isWidgetDemo { keys = HotKeys { [weak self] id in if id == 1 { self?.openQuick(date: nil) } else { self?.openSticky(id: nil) } } }
+        widgetBridge?.start()
         refreshServices()
         if !state.isDemo {
             reminderTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
@@ -83,10 +102,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         if mainWindow == nil { showMain() }
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showMain(); return true }
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard widgetBridge != nil else { return }
+        for url in urls where url.scheme == WidgetStore.scheme {
+            switch url.host {
+            case "task":
+                if let id = UUID(uuidString: url.lastPathComponent) { state.openLinkedTask(id) }
+            case "new": openQuick(date: url.lastPathComponent == "today" ? .now : nil)
+            case "list":
+                state.openWidgetList(url.lastPathComponent)
+                showMain()
+            default: break
+            }
+        }
+    }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         state.flushDocumentBodies() ? .terminateNow : .terminateCancel
     }
-    func applicationWillTerminate(_ notification: Notification) { state.flushQuickDraft(); state.syncCoordinator?.stop(); state.accountService?.stop(); keys?.stop(); reminderTimer?.invalidate(); todayPopover?.close(); demoPauseTask?.cancel() }
+    func applicationWillTerminate(_ notification: Notification) { widgetBridge?.stop(); state.flushQuickDraft(); state.syncCoordinator?.stop(); state.accountService?.stop(); keys?.stop(); reminderTimer?.invalidate(); todayPopover?.close(); demoPauseTask?.cancel() }
     func windowWillClose(_ notification: Notification) {
         if notification.object as? NSWindow === mainWindow { state.flushDocumentBodies() }
     }
@@ -184,6 +217,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         if mainWindow == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1440, height: 880), styleMask: [.titled,.closable,.miniaturizable,.resizable], backing: .buffered, defer: false)
             window.title = state.isDemo ? "Толк — демонстрация, данные не сохраняются" : "Толк"
+            if isWidgetDemo { window.title = "Толк Demo — виджеты" }
             if state.isSyncTest { window.title = "Толк Sync Test — отдельные тестовые данные" }
             let content = host(MainView(state: state))
             content.sizingOptions = []

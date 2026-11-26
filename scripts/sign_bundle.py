@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import plistlib
 import re
 import subprocess
 
@@ -51,7 +52,20 @@ def sign(bundle, release=False):
                 certificates = re.findall(r'-----BEGIN CERTIFICATE-----\s*(.*?)\s*-----END CERTIFICATE-----', result.stdout, re.S)
                 if not any(hashlib.sha256(base64.b64decode(c)).hexdigest() == config['certificate_sha256'] for c in certificates):
                     raise ValueError('Постоянный сертификат отсутствует или изменён; выпуск остановлен')
-    subprocess.run(['codesign', '--force', '--sign', identity, '--timestamp=none', str(bundle)], check=True)
+    command = ['codesign', '--force', '--sign', identity, '--timestamp=none']
+    widget = bundle / 'Contents/PlugIns/TaktWidget.appex'
+    if widget.exists():
+        host = plistlib.loads((bundle / 'Contents/Info.plist').read_bytes())
+        extension = plistlib.loads((widget / 'Contents/Info.plist').read_bytes())
+        host_id = host['CFBundleIdentifier']
+        if host_id not in {'local.takt.mac', 'local.takt.widgetdemo'} or extension['CFBundleIdentifier'] != host_id + '.tasks':
+            raise ValueError('Идентификатор виджета не соответствует приложению')
+        demo = host_id == 'local.takt.widgetdemo'
+        entitlements = str(ROOT / 'Resources/Widget' / ('Demo.entitlements' if demo else 'Extension.entitlements'))
+        subprocess.run(command + ['--entitlements', entitlements, str(widget)], check=True)
+        if demo:
+            command += ['--entitlements', entitlements]
+    subprocess.run(command + [str(bundle)], check=True)
     subprocess.run(['codesign', '--verify', '--deep', '--strict', str(bundle)], check=True)
     if identity != '-':
         display = subprocess.run(['codesign', '-d', '-r-', str(bundle)], check=True, capture_output=True, text=True)

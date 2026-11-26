@@ -29,6 +29,7 @@ jobs:
       - name: Проверка универсальной сборки и SDK обеих архитектур
         env:
           TOLK_UNIVERSAL: "1"
+          TOLK_WIDGET: "1"
         run: zsh scripts/build.sh
 
   web:
