@@ -48,7 +48,14 @@ for widget_architecture in "${widget_architectures[@]}"; do
         -swift-version 6 -parse-as-library -O -whole-module-optimization -module-name TaktWidget \
         -module-cache-path "${TMPDIR:-/private/tmp}/takt-widget-module-cache" \
         -Xlinker -platform_version -Xlinker macos -Xlinker 14.0 -Xlinker "$widget_sdk_version" \
+        -Xlinker -e -Xlinker _NSExtensionMain \
         "${widget_flags[@]}" "$widget_sources[@]" -o "$widget_slice"
+    # Xcode starts macOS app extensions through Foundation while retaining the Swift widget entry.
+    widget_symbols=$(nm -m "$widget_slice")
+    if [[ "$widget_symbols" != *'external _NSExtensionMain (from Foundation)'* || "$widget_symbols"$'\n' != *'external _main'$'\n'* ]]; then
+        print -u2 "В бинарнике виджета отсутствует точка входа расширения macOS ($widget_architecture)."
+        exit 1
+    fi
     widget_slices+=("$widget_slice")
 done
 widget_binary="$widget_extension/Contents/MacOS/TaktWidget"
