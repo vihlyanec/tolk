@@ -40,13 +40,13 @@ nonisolated struct TaskListQuery: EntityQuery {
     }
 }
 
-nonisolated struct ChooseTaskList: WidgetConfigurationIntent {
+struct ChooseTaskList: WidgetConfigurationIntent {
     static let title: LocalizedStringResource = "Задачи Толка"
     static let description = IntentDescription("Выберите список для этого виджета.")
     @Parameter(title: "Показывать") var list: TaskListChoice?
 }
 
-nonisolated struct CompleteWidgetTask: AppIntent {
+struct CompleteWidgetTask: AppIntent {
     static let title: LocalizedStringResource = "Отметить задачу выполненной"
     static let openAppWhenRun = false
     static let isDiscoverable = false
