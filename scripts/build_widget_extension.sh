@@ -32,6 +32,8 @@ widget_sources=("${widget_intent_sources[@]}" "$PWD/Sources/TaktWidget/TaskWidge
 printf '%s\n' "$widget_sources[@]" > "$widget_path/sources.txt"
 printf '%s\n' "$widget_intent_sources[@]" > "$widget_path/host-sources.txt"
 printf '%s\n' '["AppIntent","AppEntity","EntityQuery","WidgetConfigurationIntent","AppIntentsPackage"]' > "$widget_path/protocols.json"
+# Xcode 26 accepts the protocol list through the frontend, while the driver schedules the output.
+widget_const_flags=(-emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend "$widget_path/protocols.json")
 for widget_module in Takt TaktWidget; do
     printf '{"":{"const-values":"%s/%s.swiftconstvalues"}}\n' "$widget_path" "$widget_module" > "$widget_path/$widget_module.outputs.json"
 done
@@ -44,7 +46,7 @@ widget_slices=()
 for widget_architecture in "${widget_architectures[@]}"; do
     widget_flags=()
     if [[ $widget_architecture == $widget_architectures[1] ]]; then
-        widget_flags=(-emit-const-values -const-gather-protocols-list "$widget_path/protocols.json"
+        widget_flags=("${widget_const_flags[@]}"
                       -output-file-map "$widget_path/TaktWidget.outputs.json")
     fi
     widget_slice="$widget_path/TaktWidget-$widget_architecture"
@@ -90,7 +92,7 @@ emit_intent_metadata TaktWidget "$widget_binary" "$widget_host_id.tasks" \
 "$widget_toolchain/usr/bin/swiftc" -sdk "$widget_sdk" -target "$widget_target" -c \
     -swift-version 6 -parse-as-library -O -whole-module-optimization -module-name Takt -D TOLK_WIDGET_STANDALONE \
     -module-cache-path "${TMPDIR:-/private/tmp}/takt-widget-module-cache" \
-    -emit-const-values -const-gather-protocols-list "$widget_path/protocols.json" \
+    "${widget_const_flags[@]}" \
     -output-file-map "$widget_path/Takt.outputs.json" \
     "${widget_intent_sources[@]}" -o "$widget_path/TaktIntents.o"
 emit_intent_metadata Takt "$1/Contents/MacOS/Takt" "$widget_host_id" "$1/Contents/Resources" "$widget_path/host-sources.txt"
